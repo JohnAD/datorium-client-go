@@ -1,0 +1,67 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  GO_VERSION_FILE: go.mod
+
+jobs:
+  lint:
+    name: format / vet / deps
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+      - name: gofmt
+        run: |
+          unformatted=$(gofmt -l .)
+          if [ -n "$unformatted" ]; then
+            echo "The following files are not gofmt-formatted:"
+            echo "$unformatted"
+            exit 1
+          fi
+      - name: go vet
+        run: go vet ./...
+      - name: go mod verify
+        run: go mod verify
+      - name: go mod tidy check
+        run: go mod tidy -diff
+
+  unit:
+    name: unit tests (-race)
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+      - name: go test ./... -race
+        run: go test ./... -race -count=1
+
+  build:
+    name: build packages and tools
+    runs-on: ubuntu-latest
+    needs: lint
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ env.GO_VERSION_FILE }}
+          cache: true
+      - name: go build ./...
+        run: go build ./...
+      - name: go build tools
+        run: |
+          go build -o /tmp/todo-integration ./cmd/todo-integration
+          go build -o /tmp/mint-token ./cmd/mint-token

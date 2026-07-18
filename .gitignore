@@ -1,0 +1,32 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+/bin/
+/dist/
+/cmd/*/todo-integration
+/todo-integration
+
+# Test / coverage
+*.test
+*.out
+coverage*.txt
+coverage*.out
+profile.cov
+
+# Go workspace local
+vendor/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*~
+
+# Integration runtime
+.test-run/
+test/integration/todo/analysis/
+*.log
