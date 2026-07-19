@@ -228,13 +228,19 @@ func (c *Client) Ready(ctx context.Context) (Result, error) {
 }
 
 // Establish fetches and caches establishment config from the establishment server.
-func (c *Client) Establish(ctx context.Context) error {
+// When cols are provided, each declared collection name and schema version is
+// validated against the live establishment schemas (CatalogError on mismatch).
+// Extra server collections not listed in cols are ignored.
+func (c *Client) Establish(ctx context.Context, cols ...CollectionRef) error {
 	res, err := c.doJSON(ctx, http.MethodGet, c.cfg.EstablishmentURL, apiPrefix+"/establish", nil, "", true)
 	if err != nil {
 		return err
 	}
 	est, err := parseEstablishment(res)
 	if err != nil {
+		return err
+	}
+	if err := validateCatalog(est, cols); err != nil {
 		return err
 	}
 	c.cache.set(est)

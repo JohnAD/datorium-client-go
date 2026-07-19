@@ -19,6 +19,10 @@ type Result struct {
 	OK     bool
 	Errors []APIError
 	Raw    map[string]any
+	// Body is the original response bytes. Typed document paths re-parse
+	// document payloads (e.g. sot) from Body with ojson so field order is
+	// preserved; Raw alone must not be used as a document round-trip.
+	Body []byte
 }
 
 // DecodeResult parses a JSON envelope body.
@@ -27,7 +31,7 @@ func DecodeResult(body []byte) (Result, error) {
 	if err := json.Unmarshal(body, &raw); err != nil {
 		return Result{}, fmt.Errorf("decode envelope: %w", err)
 	}
-	res := Result{Raw: raw}
+	res := Result{Raw: raw, Body: append([]byte(nil), body...)}
 	if v, ok := raw["ok"].(bool); ok {
 		res.OK = v
 	}

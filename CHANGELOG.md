@@ -19,3 +19,5 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Typed create/read/patch/delete/search helpers and reference resolution.
 - `AppendCachedRefOp`, `PatchDetailAppendingCachedRef`, and `ReadResult.SummariesForArrayField` for maintaining/reading arrays of `@@` refs.
 - Opt-in two-shard Todo integration demonstration via `start_integration_test.sh`.
+- Typed collection API: `Collection[T]`, catalog validation on `Establish`, ordered `CreateDoc`/`ReadDoc`/`DeleteDoc` via `github.com/JohnAD/ojson` (no `map[string]any` document bodies).
+- `BuildCommandOrdered` for access-language commands with stable JSON field order.

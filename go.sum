@@ -1,3 +1,5 @@
+github.com/JohnAD/ojson v0.0.0-20260715201038-134918595596 h1:pdH5tu4KB6eX4tm+sYgk5iz6PruDv07K7YPF9caJSng=
+github.com/JohnAD/ojson v0.0.0-20260715201038-134918595596/go.mod h1:Lic+AuKYUuxrWS1N9N6cDUGj1E9b8VlBkvwVQTHNWyY=
 github.com/davecgh/go-spew v1.1.0/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=
 github.com/davecgh/go-spew v1.1.1 h1:vj9j/u1bqnvCEfJOwUhtlOARqs3+rkHYY13jYWTU97c=
 github.com/davecgh/go-spew v1.1.1/go.mod h1:J7Y8YcW2NihsgmVo/mv3lAwl/skON4iLHjSsI+c5H38=

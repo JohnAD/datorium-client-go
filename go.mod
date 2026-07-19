@@ -3,6 +3,7 @@ module github.com/JohnAD/datorium-client-go
 go 1.25.11
 
 require (
+	github.com/JohnAD/ojson v0.0.0-20260715201038-134918595596
 	github.com/lestrrat-go/jwx/v3 v3.1.1
 	github.com/oklog/ulid/v2 v2.1.1
 )

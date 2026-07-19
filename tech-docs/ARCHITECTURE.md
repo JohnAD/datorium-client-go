@@ -4,7 +4,7 @@
 
 | Path | Role |
 |------|------|
-| Root `datorium` | Public `Client`, config/options, CRUD/search/establish APIs |
+| Root `datorium` | Public `Client`, config/options, CRUD/search/establish APIs, typed `Collection[T]` layer |
 | `shard/` | Document ID CRC32 slot + range parsing (ported from DatoriumDB) |
 | `searchpath/` | Search result path encoding + shard slot |
 | `refs/` | Parse `@__Collection__id` / `@@__Collection__id` |
@@ -47,3 +47,28 @@ flowchart LR
 2. On `wrongMachine`: refresh establish if `configVersion` is newer/stale, rewrite URL, retry up to a small bound.
 3. On `versionMismatch`: surface typed error; optional helper re-reads and retries once.
 4. Writes include a client-generated ULID `operationId` unless the caller supplies one.
+
+## Typed collections and document order
+
+Applications may declare `Collection[T]` values (name + schema version) and pass
+them to `Establish` for catalog validation against live `schemas`. Typed writes
+build command detail objects with [`ojson`](https://github.com/JohnAD/ojson)
+(`NewObjectFromStructTry` → `ToJSONBytes`) so non-SOT field order matches Go
+struct declaration order. Typed reads re-parse `sot` from the original response
+bytes with ojson into `T` (plus `DocMeta` for `!` / `$` / `#`).
+
+**Invariant:** typed document paths must never store or round-trip document
+bodies as `map[string]any`. Go maps randomize keys; the server honors client
+order for non-SOT fields when persisting git-friendly JSON.
+
+Raw `Create`/`Patch`/`Delete` helpers that accept `map[string]any` remain as an
+escape hatch and are order-unsafe for document content. Do not “fix” maps by
+feeding them through ojson `NewObjectFromMap` (that sorts keys). Prefer typed
+APIs or hand-built `ojson.JSONValue` details via `BuildCommandOrdered`.
+
+### Patch follow-up (not implemented)
+
+RFC6902 patch ops are path-oriented; a full typed “replace struct” API is a
+separate product. Future helpers should emit ojson-ordered op values whenever
+patch `value`s contain objects. Candidates: `PatchDoc(ctx, col, id, version,
+ops)` and/or typed path helpers / `ReplaceFields` from struct field names.

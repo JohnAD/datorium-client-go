@@ -56,13 +56,77 @@ func main() {
 }
 ```
 
+> **Order warning:** Raw helpers that take `map[string]any` for document content are
+> **order-unsafe**. Go maps randomize key order; DatoriumDB honors client field
+> order for non-schema (non-SOT) fields when storing git-tracked JSON. Prefer the
+> typed collection API below (or build details with [`ojson`](https://github.com/JohnAD/ojson))
+> whenever document field order matters.
+
+## Typed collections
+
+Declare collections and content structs once, verify them in `Establish`, then
+use `CreateDoc` / `ReadDoc` / `DeleteDoc`. Bodies stay as ordered `ojson` values
+end-to-end (never `map[string]any`). Auto-id uses `ojson.NewVoid()` (not `""`).
+
+```go
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+
+	datorium "github.com/JohnAD/datorium-client-go"
+	"github.com/JohnAD/ojson"
+)
+
+type Todo struct {
+	Title  string `json:"title"`
+	Status string `json:"status"`
+}
+
+var Todos = datorium.MustCollection[Todo]("Todos", 0)
+
+func main() {
+	ctx := context.Background()
+	client, err := datorium.New(datorium.Config{
+		EstablishmentURL: "http://127.0.0.1:8081",
+		Token:            "Bearer-token-here",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer client.Close()
+
+	if err := client.Establish(ctx, Todos); err != nil {
+		log.Fatal(err) // CatalogError if name/version mismatch
+	}
+
+	created, err := datorium.CreateDoc(ctx, client, Todos, ojson.NewVoid(), Todo{
+		Title: "Buy milk", Status: "open",
+	})
+	if err != nil {
+		log.Fatal(err)
+	}
+	rr, err := datorium.ReadDoc(ctx, client, Todos, created.ID, nil)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(rr.Doc.Title, rr.Meta.Version)
+}
+```
+
+(`CreateDoc` / `ReadDoc` / `DeleteDoc` are package functions because Go does not
+allow type parameters on methods.)
+
 ## Features
 
 - Bearer-authenticated HTTP transport with JSON envelopes (`ok` / `errors`)
 - Establishment fetch + in-memory cache with config-version tracking
 - CRC32 shard slot routing for writes (SOT) and reads (read members)
 - Bounded `wrongMachine` retry with optional host URL rewriting for Docker
-- Typed CRUD + search helpers, ULID `operationId` support
+- Typed collection API (`Collection[T]`, catalog-checked `Establish`, ordered `CreateDoc`/`ReadDoc`/`DeleteDoc`)
+- Raw CRUD + search helpers, ULID `operationId` support
 - Direct (`@`) and cached (`@@`) reference helpers
 - Front-page helpers for arrays of cached refs (`AppendCachedRefOp`, `SummariesForArrayField`)
 - Opt-in two-shard Todo integration demo (`./start_integration_test.sh`)
