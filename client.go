@@ -55,6 +55,12 @@ type Config struct {
 	// TransportRetries bounds retries on transport failures (default 0).
 	TransportRetries int
 
+	// CreateAmbiguousVerifyDelay is how long to wait before a follow-up read
+	// when create fails with a transport error (response may have been lost
+	// after a successful commit). Zero means the default (3s). Negative
+	// disables the follow-up read.
+	CreateAmbiguousVerifyDelay time.Duration
+
 	// UserAgent sets the User-Agent header.
 	UserAgent string
 }

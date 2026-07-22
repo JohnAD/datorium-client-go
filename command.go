@@ -30,6 +30,17 @@ func BuildCommand(word, target, parm string, detail any) (string, error) {
 
 // NewOperationID returns a new ULID string suitable for write operationId fields.
 func NewOperationID() string {
+	return newULID()
+}
+
+// NewDocumentID returns a new ULID string suitable for client-supplied create IDs.
+// The server never generates document IDs; callers should mint before create
+// (Create / CollectionClient.CreateDoc do this when the id is empty / nil).
+func NewDocumentID() string {
+	return newULID()
+}
+
+func newULID() string {
 	return ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader).String()
 }
 

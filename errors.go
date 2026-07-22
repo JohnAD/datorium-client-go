@@ -92,9 +92,7 @@ func appErrorFromResult(res Result) *AppError {
 	if len(res.Errors) > 0 {
 		ae.Message = res.Errors[0].Message
 	}
-	if v, ok := res.Raw["configVersion"].(float64); ok {
-		ae.ConfigVersion = int(v)
-	}
+	ae.ConfigVersion = res.IntField("configVersion")
 	if ae.Code == "" {
 		ae.Code = "unknown"
 		ae.Message = "ok:false without error codes"

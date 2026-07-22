@@ -24,8 +24,8 @@ type Route struct {
 
 func (c *Client) routeDocument(est *Establishment, documentID string, kind RouteKind) (Route, error) {
 	if documentID == "" || documentID == "null" {
-		// Auto-ID creates: route via establishment server; server may bounce
-		// with wrongMachine once the ID is known. Prefer PreferServer if set.
+		// Legacy / misconfigured: creates must supply a client id. Fall back to
+		// the establishment server; Prefer PreferServer if set.
 		name := est.General.EstablishmentServer
 		if c.cfg.PreferServer != "" {
 			name = c.cfg.PreferServer

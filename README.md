@@ -44,6 +44,7 @@ func main() {
 		log.Fatal(err)
 	}
 
+	// Empty id → client mints a ULID (server never assigns create IDs).
 	created, err := client.Create(ctx, "Todos", "", map[string]any{
 		"$":     "Todos:0",
 		"title": "Buy milk",
@@ -60,13 +61,16 @@ func main() {
 > **order-unsafe**. Go maps randomize key order; DatoriumDB honors client field
 > order for non-schema (non-SOT) fields when storing git-tracked JSON. Prefer the
 > typed collection API below (or build details with [`ojson`](https://github.com/JohnAD/ojson))
-> whenever document field order matters.
+> whenever document field order matters. `Create` marshals the command line once
+> before network attempts so retries cannot reshuffle keys, and may confirm
+> ambiguous create failures with a follow-up read.
 
 ## Typed collections
 
-Declare collections and content structs once, verify them in `Establish`, then
-use `CreateDoc` / `ReadDoc` / `DeleteDoc`. Bodies stay as ordered `ojson` values
-end-to-end (never `map[string]any`). Auto-id uses `ojson.NewVoid()` (not `""`).
+Declare a `Collection[T]` descriptor, verify it in `Establish`, then `Bind` a
+typed `CollectionClient[T]` and use its methods. Pass `nil` as the create id to
+mint a ULID locally (the server never assigns create IDs). See
+[`docs/documents.md`](docs/documents.md) and [`docs/patches.md`](docs/patches.md).
 
 ```go
 package main
@@ -77,7 +81,6 @@ import (
 	"log"
 
 	datorium "github.com/JohnAD/datorium-client-go"
-	"github.com/JohnAD/ojson"
 )
 
 type Todo struct {
@@ -101,23 +104,37 @@ func main() {
 	if err := client.Establish(ctx, Todos); err != nil {
 		log.Fatal(err) // CatalogError if name/version mismatch
 	}
+	todos, err := Todos.Bind(client)
+	if err != nil {
+		log.Fatal(err)
+	}
 
-	created, err := datorium.CreateDoc(ctx, client, Todos, ojson.NewVoid(), Todo{
+	created, err := todos.CreateDoc(ctx, nil, Todo{
 		Title: "Buy milk", Status: "open",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
-	rr, err := datorium.ReadDoc(ctx, client, Todos, created.ID, nil)
+	item, err := todos.GetDoc(ctx, created.ID)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println(rr.Doc.Title, rr.Meta.Version)
+
+	item.Doc.Status = "done"
+	patch, err := todos.CreatePatchFromChanges(item)
+	if err != nil {
+		log.Fatal(err)
+	}
+	patched, err := todos.PatchDoc(ctx, patch)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fmt.Println(item.Doc.Title, patched.Version)
 }
 ```
 
-(`CreateDoc` / `ReadDoc` / `DeleteDoc` are package functions because Go does not
-allow type parameters on methods.)
+(`CollectionClient[T]` carries the type parameter so methods work; Go does not
+allow type parameters on methods of the non-generic `*Client`.)
 
 ## Features
 
@@ -125,7 +142,7 @@ allow type parameters on methods.)
 - Establishment fetch + in-memory cache with config-version tracking
 - CRC32 shard slot routing for writes (SOT) and reads (read members)
 - Bounded `wrongMachine` retry with optional host URL rewriting for Docker
-- Typed collection API (`Collection[T]`, catalog-checked `Establish`, ordered `CreateDoc`/`ReadDoc`/`DeleteDoc`)
+- Typed collection clients (`Collection[T].Bind` → `CollectionClient[T]` methods)
 - Raw CRUD + search helpers, ULID `operationId` support
 - Direct (`@`) and cached (`@@`) reference helpers
 - Front-page helpers for arrays of cached refs (`AppendCachedRefOp`, `SummariesForArrayField`)
@@ -133,11 +150,10 @@ allow type parameters on methods.)
 
 ## Documentation
 
-- [tech-docs/ROADMAP.md](tech-docs/ROADMAP.md)
-- [tech-docs/ARCHITECTURE.md](tech-docs/ARCHITECTURE.md)
-- [tech-docs/PROTOCOL.md](tech-docs/PROTOCOL.md)
-- [tech-docs/COMPATIBILITY.md](tech-docs/COMPATIBILITY.md)
-- [tech-docs/TESTING.md](tech-docs/TESTING.md)
+**Using the library:** start at [`docs/README.md`](docs/README.md) (API guide for application authors).
+
+**Developing this library** (internals, protocol notes, roadmap, release):
+start at [`tech-docs/ROADMAP.md`](tech-docs/ROADMAP.md).
 
 Server protocol source of truth lives in the sibling DatoriumDB repository
 (`tech-docs/ACCESS-LANGUAGE.md`, `SHARDING.md`, `AUTHENTICATION.md`,

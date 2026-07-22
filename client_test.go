@@ -88,7 +88,7 @@ func TestHealthAndEstablishAndCRUD(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rr.SOT["title"] != "Buy milk" {
+	if rr.SOT.Get("title").ToStringOrEmpty() != "Buy milk" {
 		t.Fatalf("read %#v", rr)
 	}
 }
@@ -139,7 +139,7 @@ func TestWrongMachineRetry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rr.SOT["title"] != "ok" {
+	if rr.SOT.Get("title").ToStringOrEmpty() != "ok" {
 		t.Fatalf("unexpected %#v", rr)
 	}
 	if hits.Load() < 2 {
@@ -204,11 +204,11 @@ func TestPatchUsesVersionsAfter(t *testing.T) {
 }
 
 func TestBuildCommand(t *testing.T) {
-	line, err := datorium.BuildCommand("create", "Todos", "null", map[string]any{"title": "x"})
+	line, err := datorium.BuildCommand("create", "Todos", "todo1", map[string]any{"title": "x"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if line != `create Todos null {"title":"x"}` {
+	if line != `create Todos todo1 {"title":"x"}` {
 		t.Fatalf("%q", line)
 	}
 }

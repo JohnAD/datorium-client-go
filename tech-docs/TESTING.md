@@ -75,35 +75,39 @@ ranges so routing is exercised for real.
 | Step | What happens |
 |------|----------------|
 | `WAIT_READY` | Polls readiness through the client until server1 reports `ready: true`. |
-| `ESTABLISH` | `GET /establish`, caches general/servers/shardMap/schemas/searches/auth, prints establishment name and config version. |
-| `PICK_IDS` | Chooses four IDs: two Users (low + high shard), one TodoList (low), one Todo (high). Logs each ID and its CRC32 slot hex. |
-| `CREATING_USERS` | Creates **Ada** and **Grace** in `Users` with empty `todoLists` arrays (front-page holder for `@@` list refs). |
-| `CREATING_LIST` | Creates a `TodoLists` document on the low shard titled "Ship client", with a live `@__Users__{Grace}` owner and a cached `@@__Users__{Grace}` ownerSummary. |
-| `LINK_LIST_TO_USER` | Patches Grace's `todoLists` array to append `@@__TodoLists__{listLow}` (library helper `PatchDetailAppendingCachedRef`). |
-| `READ_USER_FRONT_PAGE` | Reads **Users/Grace** with `cacheSummaries: true` until ordered front-page summaries show the list title (O(1) user home-page pattern; up to ~45s). |
-| `PATCH_LIST_TITLE` | Patches the list title to `"Ship client v2"`. |
-| `WAIT_FRONT_PAGE_UPDATE` | Re-reads **Users/Grace** every ~2s until the front-page cached list title updates (max ~15s). |
-| `RESOLVE_LIVE_REF` | Reads the list and follows the live `@` owner reference to Grace on the high shard (smart-client routed read). |
-| `READ_CACHED_REF` | One `cacheSummaries` read of the TodoList to create the local cache stub for Grace (may still be `#: null` until a later source write). |
-| `PATCH_CACHED_TARGET` | Patches Grace (`displayName` → `"Grace Hopper"`), which re-queues cache-update work items for all read members. |
-| `WAIT_CACHE_UPDATE` | Re-reads the **same TodoList** every ~2s until `cacheSummaries.Users.{Grace}.displayName` is `"Grace Hopper"` (max ~15s). |
+| `ESTABLISH` | `GET /establish` with catalog `Users` / `TodoLists` / `Todos`, caches config, prints name and version. |
+| `BIND_TYPED` | `Users.Bind` / `TodoLists.Bind` / `Todos.Bind` → typed `CollectionClient`s (compile live schemas). |
+| `PICK_IDS` | Chooses five IDs: two Users (low + high), one TodoList (low), two Todos (high). Logs each ID and CRC32 slot hex. |
+| `CREATING_USERS_RAW` | Raw `Client.Create` for **Ada** (`Users`, empty `todoLists`). |
+| `CREATING_USERS_TYPED` | Typed `CreateDoc` for **Grace**. |
+| `CREATING_LIST_TYPED` | Typed `CreateDoc` for a `TodoLists` doc titled "Ship client" with live `@` + cached `@@` owner refs to Grace. |
+| `LINK_LIST_TO_USER_RAW` | Raw `Patch` via `PatchDetailAppendingCachedRef` appends `@@__TodoLists__{listLow}` onto Grace's `todoLists`. |
+| `READ_USER_FRONT_PAGE` | Raw `Read` of **Users/Grace** with `cacheSummaries` until front-page summaries show the list title (up to ~45s). |
+| `PATCH_LIST_TITLE_TYPED` | Typed `GetDoc` → mutate title → `CreatePatchFromChanges` → `PatchDoc` (`"Ship client v2"`). |
+| `WAIT_FRONT_PAGE_UPDATE` | Re-reads Grace until the front-page cached list title updates (max ~15s). |
+| `RESOLVE_LIVE_REF` | Typed `GetDocOpts` of the list + raw `ResolveDirectRef` for the live `@` owner (Grace on high shard). |
+| `READ_CACHED_REF` | Raw `cacheSummaries` read of the TodoList to create the local cache stub for Grace. |
+| `PATCH_CACHED_TARGET_TYPED` | Typed `GetDoc` + hand-built `ojson.Patch` via `CreatePatch` / `PatchDoc` (`displayName` → `"Grace Hopper"`). |
+| `WAIT_CACHE_UPDATE` | Re-reads the TodoList until `cacheSummaries.Users.{Grace}.displayName` is `"Grace Hopper"` (max ~15s). |
+| `CREATING_TODO_RAW` | Raw `Create` of a high-shard Todo (`status: open`) with live + cached refs to the list. |
+| `PATCHING_TODO_RAW` | Raw `Read` + RFC6902 `Patch` `status` open → done; asserts `versions.after` advanced. |
+| `WAIT_SEARCH` | Polls precompiled `search Todos byStatus {status: done}` until the raw todo ID appears. |
+| `DELETING_TODO_RAW` | Raw `Delete` of that todo (retry once on version mismatch); expects `documentNotFound` on re-read. |
+| `TYPED_TODO_CRUD` | Typed create / get / `CreatePatchFromChanges` / patch / delete on a second Todo (also proves private baseline ignores a mutated `OriginalDoc`). |
+| `PASSED` | Prints `todo-integration PASSED` when every assertion succeeded. |
 
 Cache-update note: datoriumdb completes pending cache work as a no-op when the
 read member has no stub file yet. So a referring `cacheSummaries` read must
 happen first (stub), then a source-document write (or the earlier write is
-already gone). The front-page path usually gets filled by `PATCH_LIST_TITLE`
+already gone). The front-page path usually gets filled by `PATCH_LIST_TITLE_TYPED`
 after `READ_USER_FRONT_PAGE` creates the list stub.
-| `CREATING_TODO` | Creates a `Todos` document on the high shard (`status: open`) with live + cached refs back to the low-shard list. |
-| `PATCHING_TODO` | Reads the todo, RFC6902-patches `status` from `open` → `done`, asserts `versions.after` advanced, re-reads and confirms status. |
-| `WAIT_SEARCH` | Runs precompiled `search Todos byStatus {status: done}`, routed to the search-result shard, polling until the todo ID appears in `matches` (change-agent indexing lag). |
-| `DELETING_TODO` | Deletes the todo with the current `#` version (retries once on mismatch), then reads again and expects `documentNotFound`. |
-| `PASSED` | Prints `todo-integration PASSED` when every assertion succeeded. |
 
 ### What this proves
 
-- Bearer auth + establishment caching
+- Bearer auth + establishment caching + catalog-checked `Establish`
 - CRC32 shard routing across `00-7F` / `80-FF` with host URL rewrite
-- Create / read / patch / delete over the access language
+- Create / read / patch / delete in **both** raw `Client` and typed `CollectionClient` forms
+- Typed patch paths: `CreatePatchFromChanges` and hand-built `CreatePatch`
 - Live `@` reference resolution by the smart client
 - Cached `@@` summaries via `cacheSummaries`, including observing a referenced-document patch eventually appear on a later read of the referring document
 - User front-page pattern: `Users.todoLists` as an array of cached TodoList refs; one user read yields ordered list titles (`SummariesForArrayField`)

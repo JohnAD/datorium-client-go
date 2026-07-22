@@ -3,6 +3,8 @@ package datorium
 import (
 	"context"
 	"fmt"
+
+	"github.com/JohnAD/ojson"
 )
 
 // WriteResult is a successful create/patch/delete summary.
@@ -21,38 +23,32 @@ type ReadResult struct {
 	Result         Result
 	Collection     string
 	ID             string
-	SOT            map[string]any
-	ExtraFields    map[string]any
-	CacheSummaries map[string]any
+	SOT            ojson.JSONValue
+	ExtraFields    ojson.JSONValue
+	CacheSummaries ojson.JSONValue
 }
 
-// Create creates a document. Empty id means server-assigned ULID ("null" parm).
+// Create creates a document. The server never assigns create IDs: an empty id
+// is replaced with a client-minted ULID (NewDocumentID) before the command is
+// sent. The access-language line is marshaled once so retries cannot reshuffle
+// map key order. Ambiguous failures (documentExists, transport errors) may be
+// resolved with a follow-up read — see Config.CreateAmbiguousVerifyDelay.
+//
+// Prefer CollectionClient.CreateDoc for order-safe document bodies.
 func (c *Client) Create(ctx context.Context, collection, id string, content map[string]any) (WriteResult, error) {
 	if collection == "" {
 		return WriteResult{}, fmt.Errorf("datorium: collection is required")
 	}
-	est, err := c.ensureEstablished(ctx)
-	if err != nil {
-		return WriteResult{}, err
-	}
-	parm := id
-	if parm == "" {
-		parm = "null"
+	if id == "" {
+		id = NewDocumentID()
 	}
 	detail := ensureOperationID(cloneMap(content))
-	line, err := BuildCommand("create", collection, parm, detail)
+	// Marshal exactly once before any network attempts.
+	line, err := BuildCommand("create", collection, id, detail)
 	if err != nil {
 		return WriteResult{}, err
 	}
-	route, err := c.routeDocument(est, id, RouteWrite)
-	if err != nil {
-		return WriteResult{}, err
-	}
-	res, err := c.executeRouted(ctx, route, line)
-	if err != nil {
-		return WriteResult{}, err
-	}
-	return writeResultFrom(res), nil
+	return c.executeCreate(ctx, collection, id, line)
 }
 
 // ReadOptions controls optional read-scope fields.
@@ -149,7 +145,9 @@ func (c *Client) Delete(ctx context.Context, collection, id string, detail map[s
 }
 
 // PatchWithVersionRetry re-reads on versionMismatch and retries patch once.
-func (c *Client) PatchWithVersionRetry(ctx context.Context, collection, id string, build func(sot map[string]any) (map[string]any, error)) (WriteResult, error) {
+// build receives the ordered SOT document and returns a raw patch detail map
+// (escape hatch); prefer CollectionClient.PatchDoc for new code.
+func (c *Client) PatchWithVersionRetry(ctx context.Context, collection, id string, build func(sot ojson.JSONValue) (map[string]any, error)) (WriteResult, error) {
 	rr, err := c.Read(ctx, collection, id, nil)
 	if err != nil {
 		return WriteResult{}, err
@@ -186,9 +184,10 @@ func writeResultFrom(res Result) WriteResult {
 		OperationID: res.StringField("operationId"),
 	}
 	// Patch responses use versions.{before,after} instead of top-level "#".
-	if versions := res.MapField("versions"); versions != nil {
-		wr.VersionBefore = asString(versions["before"])
-		if after := asString(versions["after"]); after != "" {
+	versions := res.ValueField("versions")
+	if versions.IsObject() {
+		wr.VersionBefore = versions.Get("before").ToStringOrEmpty()
+		if after := versions.Get("after").ToStringOrEmpty(); after != "" {
 			wr.Version = after
 		}
 	}
@@ -200,9 +199,9 @@ func readResultFrom(res Result) ReadResult {
 		Result:         res,
 		Collection:     res.StringField("collection"),
 		ID:             res.StringField("id"),
-		SOT:            res.MapField("sot"),
-		ExtraFields:    res.MapField("extraFields"),
-		CacheSummaries: res.MapField("cacheSummaries"),
+		SOT:            res.ValueField("sot"),
+		ExtraFields:    res.ValueField("extraFields"),
+		CacheSummaries: res.ValueField("cacheSummaries"),
 	}
 }
 

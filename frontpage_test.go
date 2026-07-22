@@ -5,6 +5,7 @@ import (
 
 	datorium "github.com/JohnAD/datorium-client-go"
 	"github.com/JohnAD/datorium-client-go/refs"
+	"github.com/JohnAD/ojson"
 )
 
 func TestAppendCachedRefOp(t *testing.T) {
@@ -18,25 +19,35 @@ func TestAppendCachedRefOp(t *testing.T) {
 }
 
 func TestSummariesForArrayFieldOrder(t *testing.T) {
+	sot, err := ojson.ReadStringNoSchema(`{
+		"todoLists": [
+			"` + refs.FormatCached("TodoLists", "b") + `",
+			"` + refs.FormatCached("TodoLists", "a") + `"
+		]
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	cache, err := ojson.ReadStringNoSchema(`{
+		"TodoLists": {
+			"a": {"!": "a", "#": "v1", "title": "A"},
+			"b": {"!": "b", "#": "v1", "title": "B"}
+		}
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
 	rr := datorium.ReadResult{
-		SOT: map[string]any{
-			"todoLists": []any{
-				refs.FormatCached("TodoLists", "b"),
-				refs.FormatCached("TodoLists", "a"),
-			},
-		},
-		CacheSummaries: map[string]any{
-			"TodoLists": map[string]any{
-				"a": map[string]any{"!": "a", "#": "v1", "title": "A"},
-				"b": map[string]any{"!": "b", "#": "v1", "title": "B"},
-			},
-		},
+		SOT:            sot,
+		CacheSummaries: cache,
 	}
 	sums, err := rr.SummariesForArrayField("todoLists")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(sums) != 2 || sums[0]["title"] != "B" || sums[1]["title"] != "A" {
+	if len(sums) != 2 ||
+		sums[0].Get("title").ToStringOrEmpty() != "B" ||
+		sums[1].Get("title").ToStringOrEmpty() != "A" {
 		t.Fatalf("%#v", sums)
 	}
 }

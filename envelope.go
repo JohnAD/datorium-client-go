@@ -1,69 +1,61 @@
 package datorium
 
 import (
-	"encoding/json"
 	"fmt"
+
+	"github.com/JohnAD/ojson"
 )
 
 // APIError is one application-level error entry from a DatoriumDB envelope.
 type APIError struct {
-	Code     string `json:"code"`
-	Path     string `json:"path,omitempty"`
-	Message  string `json:"message"`
-	Expected any    `json:"expected,omitempty"`
-	Actual   any    `json:"actual,omitempty"`
+	Code     string
+	Path     string
+	Message  string
+	Expected ojson.JSONValue
+	Actual   ojson.JSONValue
 }
 
 // Result is a decoded DatoriumDB response envelope.
 type Result struct {
 	OK     bool
 	Errors []APIError
-	Raw    map[string]any
-	// Body is the original response bytes. Typed document paths re-parse
-	// document payloads (e.g. sot) from Body with ojson so field order is
-	// preserved; Raw alone must not be used as a document round-trip.
+	// Env is the full response object parsed with ojson (ordered).
+	Env ojson.JSONValue
+	// Body is the original response bytes.
 	Body []byte
 }
 
-// DecodeResult parses a JSON envelope body.
+// DecodeResult parses a JSON envelope body with ojson.
 func DecodeResult(body []byte) (Result, error) {
-	var raw map[string]any
-	if err := json.Unmarshal(body, &raw); err != nil {
+	env, err := ojson.ReadBytesNoSchema(body)
+	if err != nil {
 		return Result{}, fmt.Errorf("decode envelope: %w", err)
 	}
-	res := Result{Raw: raw, Body: append([]byte(nil), body...)}
-	if v, ok := raw["ok"].(bool); ok {
-		res.OK = v
+	if !env.IsObject() {
+		return Result{}, fmt.Errorf("decode envelope: expected object, got %s", env.Kind())
 	}
-	if errList, ok := raw["errors"].([]any); ok {
-		for _, item := range errList {
-			m, ok := item.(map[string]any)
-			if !ok {
+	res := Result{
+		Env:  env,
+		Body: append([]byte(nil), body...),
+	}
+	if ok := env.Get("ok"); ok.IsBoolean() {
+		res.OK = ok.ToBoolOrDefault(false)
+	}
+	if errList := env.Get("errors"); errList.IsArray() {
+		for _, item := range errList.Items() {
+			if !item.IsObject() {
 				continue
 			}
-			ae := APIError{
-				Code:     asString(m["code"]),
-				Path:     asString(m["path"]),
-				Message:  asString(m["message"]),
-				Expected: m["expected"],
-				Actual:   m["actual"],
-			}
-			res.Errors = append(res.Errors, ae)
+			res.Errors = append(res.Errors, APIError{
+				Code:     item.Get("code").ToStringOrEmpty(),
+				Path:     item.Get("path").ToStringOrEmpty(),
+				Message:  item.Get("message").ToStringOrEmpty(),
+				Expected: item.Get("expected"),
+				Actual:   item.Get("actual"),
+			})
 		}
 	}
 	return res, nil
-}
-
-func asString(v any) string {
-	if v == nil {
-		return ""
-	}
-	switch t := v.(type) {
-	case string:
-		return t
-	default:
-		return fmt.Sprint(t)
-	}
 }
 
 // FirstErrorCode returns the first application error code, or "".
@@ -74,13 +66,44 @@ func (r Result) FirstErrorCode() string {
 	return r.Errors[0].Code
 }
 
-// StringField returns a top-level string field from the envelope.
+// StringField returns a top-level string (or stringified number) field.
 func (r Result) StringField(key string) string {
-	return asString(r.Raw[key])
+	return jsonValueAsString(r.Env.Get(key))
 }
 
-// MapField returns a top-level object field.
-func (r Result) MapField(key string) map[string]any {
-	m, _ := r.Raw[key].(map[string]any)
-	return m
+// ValueField returns a top-level field as an ojson value (Void if missing).
+func (r Result) ValueField(key string) ojson.JSONValue {
+	if r.Env.IsMissing() || !r.Env.IsObject() {
+		return ojson.NewVoid()
+	}
+	return r.Env.Get(key)
+}
+
+// IntField returns a top-level integer field, or 0 if absent/invalid.
+func (r Result) IntField(key string) int {
+	v := r.Env.Get(key)
+	if v.IsMissing() {
+		return 0
+	}
+	n, err := v.ToIntTry()
+	if err != nil {
+		return 0
+	}
+	return n
+}
+
+func jsonValueAsString(v ojson.JSONValue) string {
+	if v.IsMissing() || v.IsNull() {
+		return ""
+	}
+	if v.IsString() {
+		return v.ToStringOrEmpty()
+	}
+	if v.IsNumber() {
+		return v.ToJSON()
+	}
+	if v.IsBoolean() {
+		return fmt.Sprint(v.ToBoolOrDefault(false))
+	}
+	return v.ToJSON()
 }

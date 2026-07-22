@@ -4,11 +4,15 @@ import (
 	"fmt"
 
 	"github.com/JohnAD/datorium-client-go/refs"
+	"github.com/JohnAD/ojson"
 )
 
 // AppendCachedRefOp returns an RFC6902 "add" operation that appends a
 // @@__collection__id value to a document array field (e.g. Users.todoLists).
 // Path uses JSON Pointer array-append ("/-").
+//
+// This returns a map for use with the raw Patch escape hatch. Prefer
+// CollectionClient.CreatePatch / PatchDoc for new code.
 func AppendCachedRefOp(arrayField, collection, id string) map[string]any {
 	return map[string]any{
 		"op":    "add",
@@ -31,39 +35,35 @@ func PatchDetailAppendingCachedRef(schemaMarker, version, arrayField, refCollect
 
 // SummariesForArrayField returns cache summary objects for @@ refs stored in
 // sot[arrayField], in array order. Missing or unresolved summaries are skipped.
-// This is the O(1) "front page" read pattern: one document read with
-// cacheSummaries:true yields ordered summaries for an array of cached refs.
-func (rr ReadResult) SummariesForArrayField(arrayField string) ([]map[string]any, error) {
-	raw, ok := rr.SOT[arrayField]
-	if !ok {
+func (rr ReadResult) SummariesForArrayField(arrayField string) ([]ojson.JSONValue, error) {
+	field := rr.SOT.Get(arrayField)
+	if field.IsMissing() {
 		return nil, nil
 	}
-	arr, ok := raw.([]any)
-	if !ok {
+	if !field.IsArray() {
 		return nil, fmt.Errorf("datorium: sot field %q is not an array", arrayField)
 	}
-	var out []map[string]any
-	for _, elem := range arr {
-		s, ok := elem.(string)
-		if !ok {
+	var out []ojson.JSONValue
+	for _, elem := range field.Items() {
+		if !elem.IsString() {
 			continue
 		}
-		r, isRef, err := refs.Parse(s)
+		r, isRef, err := refs.Parse(elem.ToStringOrEmpty())
 		if err != nil {
 			return nil, err
 		}
 		if !isRef || r.Kind != refs.Cached {
 			continue
 		}
-		coll, _ := rr.CacheSummaries[r.Collection].(map[string]any)
-		if coll == nil {
+		coll := rr.CacheSummaries.Get(r.Collection)
+		if !coll.IsObject() {
 			continue
 		}
-		sum, _ := coll[r.ID].(map[string]any)
-		if sum == nil {
+		sum := coll.Get(r.ID)
+		if !sum.IsObject() {
 			continue
 		}
-		if sum["#"] == nil {
+		if sum.Get("#").IsMissing() || sum.Get("#").IsNull() {
 			continue
 		}
 		out = append(out, sum)

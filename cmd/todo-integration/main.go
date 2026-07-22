@@ -1,5 +1,9 @@
 // Command todo-integration exercises the smart client against a live
 // two-shard Todo establishment started by start_integration_test.sh.
+//
+// Each document operation is covered in both forms:
+//   - raw Client.Create/Read/Patch/Delete (order-unsafe escape hatch)
+//   - typed CollectionClient methods after Collection.Bind
 package main
 
 import (
@@ -13,6 +17,32 @@ import (
 	"github.com/JohnAD/datorium-client-go/refs"
 	"github.com/JohnAD/datorium-client-go/searchpath"
 	"github.com/JohnAD/datorium-client-go/shard"
+	"github.com/JohnAD/ojson"
+)
+
+type User struct {
+	DisplayName string   `json:"displayName"`
+	Email       string   `json:"email"`
+	TodoLists   []string `json:"todoLists"`
+}
+
+type TodoList struct {
+	Title        string `json:"title"`
+	Owner        string `json:"owner"`
+	OwnerSummary string `json:"ownerSummary"`
+}
+
+type Todo struct {
+	Title       string `json:"title"`
+	Status      string `json:"status"`
+	List        string `json:"list"`
+	ListSummary string `json:"listSummary"`
+}
+
+var (
+	Users     = datorium.MustCollection[User]("Users", 0)
+	TodoLists = datorium.MustCollection[TodoList]("TodoLists", 0)
+	Todos     = datorium.MustCollection[Todo]("Todos", 0)
 )
 
 func main() {
@@ -55,7 +85,7 @@ func run() error {
 	}
 
 	step("ESTABLISH")
-	if err := client.Establish(ctx); err != nil {
+	if err := client.Establish(ctx, Users, TodoLists, Todos); err != nil {
 		return fmt.Errorf("establish: %w", err)
 	}
 	est := client.CachedEstablishment()
@@ -64,77 +94,103 @@ func run() error {
 	}
 	detail("establishment %q version %d", est.General.Name, est.General.Version)
 
+	step("BIND_TYPED")
+	users, err := Users.Bind(client)
+	if err != nil {
+		return fmt.Errorf("bind Users: %w", err)
+	}
+	todoLists, err := TodoLists.Bind(client)
+	if err != nil {
+		return fmt.Errorf("bind TodoLists: %w", err)
+	}
+	todos, err := Todos.Bind(client)
+	if err != nil {
+		return fmt.Errorf("bind Todos: %w", err)
+	}
+	detail("bound Users, TodoLists, Todos collection clients")
+
 	step("PICK_IDS")
 	userLow := findID(0x00, 0x7F)
 	userHigh := findID(0x80, 0xFF)
 	listLow := findIDExcluding(0x00, 0x7F, userLow)
 	todoHigh := findIDExcluding(0x80, 0xFF, userHigh)
-	detail("userLow=%s(%s) userHigh=%s(%s) listLow=%s(%s) todoHigh=%s(%s)",
+	todoTyped := findIDExcluding(0x80, 0xFF, userHigh, todoHigh)
+	detail("userLow=%s(%s) userHigh=%s(%s) listLow=%s(%s) todoHigh=%s(%s) todoTyped=%s(%s)",
 		userLow, shard.SlotHex(userLow), userHigh, shard.SlotHex(userHigh),
-		listLow, shard.SlotHex(listLow), todoHigh, shard.SlotHex(todoHigh))
+		listLow, shard.SlotHex(listLow), todoHigh, shard.SlotHex(todoHigh),
+		todoTyped, shard.SlotHex(todoTyped))
 
-	step("CREATING_USERS")
+	// --- Create: raw + typed ---
+	step("CREATING_USERS_RAW")
 	if _, err := client.Create(ctx, "Users", userLow, map[string]any{
 		"$": "Users:0", "displayName": "Ada", "email": "ada@example.com", "todoLists": []any{},
 	}); err != nil {
-		return fmt.Errorf("create userLow: %w", err)
+		return fmt.Errorf("raw create userLow: %w", err)
 	}
-	if _, err := client.Create(ctx, "Users", userHigh, map[string]any{
-		"$": "Users:0", "displayName": "Grace", "email": "grace@example.com", "todoLists": []any{},
-	}); err != nil {
-		return fmt.Errorf("create userHigh: %w", err)
-	}
+	detail("raw Create Users/%s (Ada)", userLow)
 
-	step("CREATING_LIST")
+	step("CREATING_USERS_TYPED")
+	graceID := userHigh
+	if _, err := users.CreateDoc(ctx, &graceID, User{
+		DisplayName: "Grace",
+		Email:       "grace@example.com",
+		TodoLists:   []string{},
+	}); err != nil {
+		return fmt.Errorf("typed create userHigh: %w", err)
+	}
+	detail("typed CreateDoc Users/%s (Grace)", userHigh)
+
+	step("CREATING_LIST_TYPED")
 	ownerDirect := refs.FormatDirect("Users", userHigh)
 	ownerCached := refs.FormatCached("Users", userHigh)
 	const listTitle = "Ship client"
-	listWR, err := client.Create(ctx, "TodoLists", listLow, map[string]any{
-		"$":            "TodoLists:0",
-		"title":        listTitle,
-		"owner":        ownerDirect,
-		"ownerSummary": ownerCached,
+	listID := listLow
+	listWR, err := todoLists.CreateDoc(ctx, &listID, TodoList{
+		Title:        listTitle,
+		Owner:        ownerDirect,
+		OwnerSummary: ownerCached,
 	})
 	if err != nil {
-		return fmt.Errorf("create list: %w", err)
+		return fmt.Errorf("typed create list: %w", err)
 	}
+	detail("typed CreateDoc TodoLists/%s title=%q", listLow, listTitle)
 
-	// O(1) front-page pattern: User.todoLists holds @@ refs to owned lists.
-	step("LINK_LIST_TO_USER")
+	// --- Patch: raw helper for front-page append ---
+	step("LINK_LIST_TO_USER_RAW")
 	ownerRR, err := client.Read(ctx, "Users", userHigh, nil)
 	if err != nil {
-		return fmt.Errorf("read owner before linking list: %w", err)
+		return fmt.Errorf("raw read owner before linking list: %w", err)
 	}
 	if _, err := client.Patch(ctx, "Users", userHigh, datorium.PatchDetailAppendingCachedRef(
-		asString(ownerRR.SOT["$"]), asString(ownerRR.SOT["#"]),
+		ownerRR.SOT.Get("$").ToStringOrEmpty(), ownerRR.SOT.Get("#").ToStringOrEmpty(),
 		"todoLists", "TodoLists", listLow,
 	)); err != nil {
-		return fmt.Errorf("append todoLists cached ref: %w", err)
+		return fmt.Errorf("raw append todoLists cached ref: %w", err)
 	}
-	detail("appended @@__TodoLists__%s onto Users/%s.todoLists", listLow, userHigh)
+	detail("raw Patch appended @@__TodoLists__%s onto Users/%s.todoLists", listLow, userHigh)
 
 	step("READ_USER_FRONT_PAGE")
 	if err := waitUserFrontPageTitle(ctx, client, userHigh, listLow, listTitle, 45*time.Second, 2*time.Second); err != nil {
 		return fmt.Errorf("user front page initial: %w", err)
 	}
-	detail("read Users/%s with cacheSummaries; todoLists front page shows title %q", userHigh, listTitle)
+	detail("raw Read Users/%s with cacheSummaries; todoLists front page shows title %q", userHigh, listTitle)
 
-	step("PATCH_LIST_TITLE")
-	listRR, err := client.Read(ctx, "TodoLists", listLow, nil)
+	// --- Patch: typed CreatePatchFromChanges ---
+	step("PATCH_LIST_TITLE_TYPED")
+	listItem, err := todoLists.GetDoc(ctx, listLow)
 	if err != nil {
-		return fmt.Errorf("read list before title patch: %w", err)
+		return fmt.Errorf("typed get list before title patch: %w", err)
 	}
 	const updatedListTitle = "Ship client v2"
-	if _, err := client.Patch(ctx, "TodoLists", listLow, map[string]any{
-		"$": listRR.SOT["$"],
-		"#": listRR.SOT["#"],
-		"RFC6902": []any{
-			map[string]any{"op": "replace", "path": "/title", "value": updatedListTitle},
-		},
-	}); err != nil {
-		return fmt.Errorf("patch list title: %w", err)
+	listItem.Doc.Title = updatedListTitle
+	listPatch, err := todoLists.CreatePatchFromChanges(listItem)
+	if err != nil {
+		return fmt.Errorf("typed create patch for list title: %w", err)
 	}
-	detail("patched TodoLists/%s title → %q", listLow, updatedListTitle)
+	if _, err := todoLists.PatchDoc(ctx, listPatch); err != nil {
+		return fmt.Errorf("typed patch list title: %w", err)
+	}
+	detail("typed CreatePatchFromChanges + PatchDoc TodoLists/%s title → %q", listLow, updatedListTitle)
 
 	step("WAIT_FRONT_PAGE_UPDATE")
 	if err := waitUserFrontPageTitle(ctx, client, userHigh, listLow, updatedListTitle, 15*time.Second, 2*time.Second); err != nil {
@@ -142,22 +198,23 @@ func run() error {
 	}
 	detail("re-read Users/%s; cached TodoLists/%s.title now %q", userHigh, listLow, updatedListTitle)
 
+	// --- Read: typed GetDoc + raw ResolveDirectRef ---
 	step("RESOLVE_LIVE_REF")
-	listRR, err = client.Read(ctx, "TodoLists", listLow, &datorium.ReadOptions{CacheSummaries: true})
+	listItem, err = todoLists.GetDocOpts(ctx, listLow, &datorium.ReadOptions{CacheSummaries: true})
 	if err != nil {
-		return fmt.Errorf("read list: %w", err)
+		return fmt.Errorf("typed get list: %w", err)
 	}
-	if listRR.SOT["owner"] != ownerDirect {
-		return fmt.Errorf("expected owner %q, got %#v", ownerDirect, listRR.SOT["owner"])
+	if listItem.Doc.Owner != ownerDirect {
+		return fmt.Errorf("expected owner %q, got %#v", ownerDirect, listItem.Doc.Owner)
 	}
-	ownerRR, err = client.ResolveDirectRef(ctx, asString(listRR.SOT["owner"]), nil)
+	ownerRR, err = client.ResolveDirectRef(ctx, listItem.Doc.Owner, nil)
 	if err != nil {
 		return fmt.Errorf("resolve owner: %w", err)
 	}
-	if ownerRR.SOT["displayName"] != "Grace" {
-		return fmt.Errorf("resolved owner displayName=%#v", ownerRR.SOT["displayName"])
+	if ownerRR.SOT.Get("displayName").ToStringOrEmpty() != "Grace" {
+		return fmt.Errorf("resolved owner displayName=%#v", ownerRR.SOT.Get("displayName"))
 	}
-	detail("live owner resolved to Grace")
+	detail("typed GetDocOpts + raw ResolveDirectRef → Grace")
 
 	// Owner summary on the list. Important: pending cache-updates are
 	// completed as no-ops if the read member has no stub yet, so we must
@@ -168,28 +225,31 @@ func run() error {
 	if err != nil {
 		return fmt.Errorf("seed list cacheSummaries read: %w", err)
 	}
-	if coll, _ := seedRR.CacheSummaries["Users"].(map[string]any); coll != nil {
-		detail("seed read TodoLists/%s; Users/%s summary=%v", listLow, userHigh, coll[userHigh])
+	if sum := seedRR.CacheSummaries.Get("Users").Get(userHigh); sum.IsObject() {
+		detail("raw seed read TodoLists/%s; Users/%s summary=%s", listLow, userHigh, sum.ToJSON())
 	} else {
-		detail("seed read TodoLists/%s; no Users cacheSummaries yet", listLow)
+		detail("raw seed read TodoLists/%s; no Users cacheSummaries yet", listLow)
 	}
 
-	step("PATCH_CACHED_TARGET")
-	ownerRR, err = client.Read(ctx, "Users", userHigh, nil)
+	// --- Patch: typed hand-built ojson ops ---
+	step("PATCH_CACHED_TARGET_TYPED")
+	ownerItem, err := users.GetDoc(ctx, userHigh)
 	if err != nil {
-		return fmt.Errorf("read owner before patch: %w", err)
+		return fmt.Errorf("typed get owner before patch: %w", err)
 	}
 	const updatedName = "Grace Hopper"
-	if _, err := client.Patch(ctx, "Users", userHigh, map[string]any{
-		"$": ownerRR.SOT["$"],
-		"#": ownerRR.SOT["#"],
-		"RFC6902": []any{
-			map[string]any{"op": "replace", "path": "/displayName", "value": updatedName},
-		},
-	}); err != nil {
-		return fmt.Errorf("patch owner displayName: %w", err)
+	op, err := ojson.NewPatch(ojson.PatchReplace("/displayName", ojson.NewString(updatedName)))
+	if err != nil {
+		return fmt.Errorf("build owner patch: %w", err)
 	}
-	detail("patched referenced Users/%s displayName → %q (re-fans cache updates)", userHigh, updatedName)
+	ownerPatch, err := users.CreatePatch(ownerItem, op)
+	if err != nil {
+		return fmt.Errorf("typed CreatePatch owner displayName: %w", err)
+	}
+	if _, err := users.PatchDoc(ctx, ownerPatch); err != nil {
+		return fmt.Errorf("typed PatchDoc owner displayName: %w", err)
+	}
+	detail("typed CreatePatch + PatchDoc Users/%s displayName → %q", userHigh, updatedName)
 
 	step("WAIT_CACHE_UPDATE")
 	if err := waitCacheSummary(ctx, client, "TodoLists", listLow, "Users", userHigh, "displayName", updatedName, 15*time.Second, 2*time.Second); err != nil {
@@ -197,7 +257,8 @@ func run() error {
 	}
 	detail("re-read TodoLists/%s; cached Users/%s.displayName now %q", listLow, userHigh, updatedName)
 
-	step("CREATING_TODO")
+	// --- Create/read/patch/delete Todos: raw path for search story ---
+	step("CREATING_TODO_RAW")
 	listDirect := refs.FormatDirect("TodoLists", listLow)
 	listCached := refs.FormatCached("TodoLists", listLow)
 	todoWR, err := client.Create(ctx, "Todos", todoHigh, map[string]any{
@@ -208,44 +269,45 @@ func run() error {
 		"listSummary": listCached,
 	})
 	if err != nil {
-		return fmt.Errorf("create todo: %w", err)
+		return fmt.Errorf("raw create todo: %w", err)
 	}
 	_ = listWR
 	_ = todoWR
+	detail("raw Create Todos/%s status=open", todoHigh)
 
-	step("PATCHING_TODO")
+	step("PATCHING_TODO_RAW")
 	todoRR, err := client.Read(ctx, "Todos", todoHigh, nil)
 	if err != nil {
-		return fmt.Errorf("read todo before patch: %w", err)
+		return fmt.Errorf("raw read todo before patch: %w", err)
 	}
 	patched, err := client.Patch(ctx, "Todos", todoHigh, map[string]any{
-		"$": todoRR.SOT["$"],
-		"#": todoRR.SOT["#"],
+		"$": todoRR.SOT.Get("$").ToStringOrEmpty(),
+		"#": todoRR.SOT.Get("#").ToStringOrEmpty(),
 		"RFC6902": []any{
 			map[string]any{"op": "replace", "path": "/status", "value": "done"},
 		},
 	})
 	if err != nil {
-		return fmt.Errorf("patch todo: %w", err)
+		return fmt.Errorf("raw patch todo: %w", err)
 	}
-	beforeVer := asString(todoRR.SOT["#"])
+	beforeVer := todoRR.SOT.Get("#").ToStringOrEmpty()
 	if patched.Version == "" {
-		return fmt.Errorf("expected versions.after after patch, got empty Version (raw=%v)", patched.Result.Raw["versions"])
+		return fmt.Errorf("expected versions.after after raw patch, got empty Version (env=%s)", patched.Result.ValueField("versions").ToJSON())
 	}
 	if patched.Version == beforeVer {
-		return fmt.Errorf("expected new version after patch, still %q", patched.Version)
+		return fmt.Errorf("expected new version after raw patch, still %q", patched.Version)
 	}
 	if patched.VersionBefore != "" && patched.VersionBefore != beforeVer {
 		return fmt.Errorf("versions.before=%q want %q", patched.VersionBefore, beforeVer)
 	}
 	todoRR, err = client.Read(ctx, "Todos", todoHigh, &datorium.ReadOptions{CacheSummaries: true})
 	if err != nil {
-		return fmt.Errorf("read todo after patch: %w", err)
+		return fmt.Errorf("raw read todo after patch: %w", err)
 	}
-	if todoRR.SOT["status"] != "done" {
-		return fmt.Errorf("status=%#v want done", todoRR.SOT["status"])
+	if todoRR.SOT.Get("status").ToStringOrEmpty() != "done" {
+		return fmt.Errorf("status=%#v want done", todoRR.SOT.Get("status"))
 	}
-	detail("status open → done; version %s → %s", beforeVer, patched.Version)
+	detail("raw Patch status open → done; version %s → %s", beforeVer, patched.Version)
 
 	step("WAIT_SEARCH")
 	segs := searchpath.EqualsStringSegments("done")
@@ -254,28 +316,81 @@ func run() error {
 	}
 	detail("search Todos.byStatus matched %s", todoHigh)
 
-	step("DELETING_TODO")
+	step("DELETING_TODO_RAW")
 	if _, err := client.Delete(ctx, "Todos", todoHigh, map[string]any{
-		"$": todoRR.SOT["$"],
-		"#": todoRR.SOT["#"],
+		"$": todoRR.SOT.Get("$").ToStringOrEmpty(),
+		"#": todoRR.SOT.Get("#").ToStringOrEmpty(),
 	}); err != nil {
-		// Version may have advanced if something else touched it; re-read once.
 		todoRR, rerr := client.Read(ctx, "Todos", todoHigh, nil)
 		if rerr != nil {
-			return fmt.Errorf("delete todo: %w (re-read: %v)", err, rerr)
+			return fmt.Errorf("raw delete todo: %w (re-read: %v)", err, rerr)
 		}
 		if _, err := client.Delete(ctx, "Todos", todoHigh, map[string]any{
-			"$": todoRR.SOT["$"],
-			"#": todoRR.SOT["#"],
+			"$": todoRR.SOT.Get("$").ToStringOrEmpty(),
+			"#": todoRR.SOT.Get("#").ToStringOrEmpty(),
 		}); err != nil {
-			return fmt.Errorf("delete todo retry: %w", err)
+			return fmt.Errorf("raw delete todo retry: %w", err)
 		}
 	}
 	_, err = client.Read(ctx, "Todos", todoHigh, nil)
 	if !datorium.IsAppCode(err, datorium.CodeDocumentNotFound) {
-		return fmt.Errorf("expected documentNotFound after delete, got %v", err)
+		return fmt.Errorf("expected documentNotFound after raw delete, got %v", err)
 	}
-	detail("delete confirmed (documentNotFound)")
+	detail("raw Delete confirmed (documentNotFound)")
+
+	// --- Typed Todo create / get / patch-from-changes / delete ---
+	step("TYPED_TODO_CRUD")
+	typedID := todoTyped
+	if _, err := todos.CreateDoc(ctx, &typedID, Todo{
+		Title:       "Typed path coverage",
+		Status:      "open",
+		List:        listDirect,
+		ListSummary: listCached,
+	}); err != nil {
+		return fmt.Errorf("typed create todo: %w", err)
+	}
+	todoItem, err := todos.GetDoc(ctx, todoTyped)
+	if err != nil {
+		return fmt.Errorf("typed get todo: %w", err)
+	}
+	if todoItem.Doc.Status != "open" || todoItem.OriginalDoc.Status != "open" {
+		return fmt.Errorf("typed get todo status=%q original=%q", todoItem.Doc.Status, todoItem.OriginalDoc.Status)
+	}
+	todoItem.Doc.Status = "done"
+	todoItem.OriginalDoc.Status = "corrupted" // must not affect private baseline
+	typedPatch, err := todos.CreatePatchFromChanges(todoItem)
+	if err != nil {
+		return fmt.Errorf("typed CreatePatchFromChanges todo: %w", err)
+	}
+	typedPatched, err := todos.PatchDoc(ctx, typedPatch)
+	if err != nil {
+		return fmt.Errorf("typed PatchDoc todo: %w", err)
+	}
+	if typedPatched.Version == "" || typedPatched.Version == todoItem.Meta.Version {
+		return fmt.Errorf("typed patch did not advance version: before=%q after=%q", todoItem.Meta.Version, typedPatched.Version)
+	}
+	todoItem, err = todos.GetDoc(ctx, todoTyped)
+	if err != nil {
+		return fmt.Errorf("typed get todo after patch: %w", err)
+	}
+	if todoItem.Doc.Status != "done" {
+		return fmt.Errorf("typed todo status=%q want done", todoItem.Doc.Status)
+	}
+	if _, err := todos.DeleteDoc(ctx, todoItem); err != nil {
+		todoItem, rerr := todos.GetDoc(ctx, todoTyped)
+		if rerr != nil {
+			return fmt.Errorf("typed delete todo: %w (re-get: %v)", err, rerr)
+		}
+		if _, err := todos.DeleteDoc(ctx, todoItem); err != nil {
+			return fmt.Errorf("typed delete todo retry: %w", err)
+		}
+	}
+	_, err = todos.GetDoc(ctx, todoTyped)
+	if !datorium.IsAppCode(err, datorium.CodeDocumentNotFound) {
+		return fmt.Errorf("expected documentNotFound after typed delete, got %v", err)
+	}
+	detail("typed CreateDoc/GetDoc/CreatePatchFromChanges/PatchDoc/DeleteDoc on Todos/%s", todoTyped)
+
 	return nil
 }
 
@@ -284,7 +399,7 @@ func waitReady(ctx context.Context, client *datorium.Client, timeout time.Durati
 	for time.Now().Before(deadline) {
 		res, err := client.Ready(ctx)
 		if err == nil && res.OK {
-			if ready, _ := res.Raw["ready"].(bool); ready {
+			if ready, err := res.ValueField("ready").ToBoolTry(); err == nil && ready {
 				return nil
 			}
 		}
@@ -314,10 +429,12 @@ func waitUserFrontPageTitle(ctx context.Context, client *datorium.Client, userID
 			if err != nil {
 				last = err.Error()
 			} else {
-				last = fmt.Sprintf("todoLists=%v cacheSummaries=%v summaries=%v",
-					rr.SOT["todoLists"], rr.CacheSummaries, sums)
+				last = fmt.Sprintf("todoLists=%s cacheSummaries=%s summaries=%v",
+					rr.SOT.Get("todoLists").ToJSON(), rr.CacheSummaries.ToJSON(), sums)
 				for _, sum := range sums {
-					if asString(sum["!"]) == listID && asString(sum["title"]) == wantTitle && sum["#"] != nil {
+					if sum.Get("!").ToStringOrEmpty() == listID &&
+						sum.Get("title").ToStringOrEmpty() == wantTitle &&
+						!sum.Get("#").IsMissing() && !sum.Get("#").IsNull() {
 						return nil
 					}
 				}
@@ -347,17 +464,15 @@ func waitCacheSummary(ctx context.Context, client *datorium.Client, collection, 
 		rr, err := client.Read(ctx, collection, id, &datorium.ReadOptions{CacheSummaries: true})
 		if err != nil {
 			last = err.Error()
-		} else if coll, ok := rr.CacheSummaries[refColl].(map[string]any); ok {
-			if sum, ok := coll[refID].(map[string]any); ok {
-				last = fmt.Sprintf("%v", sum)
-				if asString(sum[field]) == want && sum["#"] != nil {
-					return nil
-				}
-			} else {
-				last = fmt.Sprintf("no summary for %s/%s in %#v", refColl, refID, rr.CacheSummaries)
+		} else if sum := rr.CacheSummaries.Get(refColl).Get(refID); sum.IsObject() {
+			last = sum.ToJSON()
+			if sum.Get(field).ToStringOrEmpty() == want && !sum.Get("#").IsMissing() && !sum.Get("#").IsNull() {
+				return nil
 			}
+		} else if rr.CacheSummaries.Get(refColl).IsObject() {
+			last = fmt.Sprintf("no summary for %s/%s in %s", refColl, refID, rr.CacheSummaries.ToJSON())
 		} else {
-			last = fmt.Sprintf("no cacheSummaries.%s (raw=%v)", refColl, rr.CacheSummaries)
+			last = fmt.Sprintf("no cacheSummaries.%s (env=%s)", refColl, rr.CacheSummaries.ToJSON())
 		}
 		if !time.Now().Before(deadline) {
 			break
@@ -422,16 +537,6 @@ func envOr(k, def string) string {
 		return v
 	}
 	return def
-}
-
-func asString(v any) string {
-	if v == nil {
-		return ""
-	}
-	if s, ok := v.(string); ok {
-		return s
-	}
-	return fmt.Sprint(v)
 }
 
 func step(name string) {

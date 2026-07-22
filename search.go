@@ -65,9 +65,10 @@ func searchResultFrom(res Result) SearchResult {
 		Collection: res.StringField("collection"),
 		Search:     res.StringField("search"),
 	}
-	if raw, ok := res.Raw["matches"].([]any); ok {
-		for _, v := range raw {
-			sr.Matches = append(sr.Matches, asString(v))
+	matches := res.ValueField("matches")
+	if matches.IsArray() {
+		for _, v := range matches.Items() {
+			sr.Matches = append(sr.Matches, jsonValueAsString(v))
 		}
 	}
 	return sr

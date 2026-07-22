@@ -1,11 +1,11 @@
 package datorium
 
 import (
-	"encoding/json"
 	"fmt"
 	"sync"
 
 	"github.com/JohnAD/datorium-client-go/shard"
+	"github.com/JohnAD/ojson"
 )
 
 // ServerEntry is one establishment servers map entry.
@@ -32,19 +32,21 @@ type GeneralConfig struct {
 
 // SchemaEntry is one collection schema from establish.
 type SchemaEntry struct {
-	Version int            `json:"version"`
-	Schema  map[string]any `json:"schema"`
+	Version int
+	// Doc is the ordered schema object (ojson). Never round-trip via map[string]any.
+	Doc ojson.JSONValue
 }
 
 // Establishment is the cached establish document (without the ok envelope).
 type Establishment struct {
-	General  GeneralConfig              `json:"general"`
-	Servers  map[string]ServerEntry     `json:"servers"`
-	ShardMap map[string]ShardAssignment `json:"-"`
-	Schemas  map[string]SchemaEntry     `json:"schemas"`
-	Searches map[string]map[string]any  `json:"searches"`
-	Auth     map[string]any             `json:"auth"`
-	Raw      map[string]any             `json:"-"`
+	General  GeneralConfig
+	Servers  map[string]ServerEntry
+	ShardMap map[string]ShardAssignment
+	Schemas  map[string]SchemaEntry
+	Searches ojson.JSONValue
+	Auth     ojson.JSONValue
+	// Env is the full establish envelope object (ordered).
+	Env ojson.JSONValue
 }
 
 type establishmentCache struct {
@@ -68,46 +70,67 @@ func parseEstablishment(res Result) (*Establishment, error) {
 	if !res.OK {
 		return nil, appErrorFromResult(res)
 	}
-	// Re-marshal the raw map (minus ok) into typed fields.
-	raw := map[string]any{}
-	for k, v := range res.Raw {
-		if k == "ok" || k == "errors" {
-			continue
+	env := res.Env
+	if env.IsMissing() && len(res.Body) > 0 {
+		var err error
+		env, err = ojson.ReadBytesNoSchema(res.Body)
+		if err != nil {
+			return nil, fmt.Errorf("parse establishment: %w", err)
 		}
-		raw[k] = v
 	}
-	body, err := json.Marshal(raw)
-	if err != nil {
-		return nil, err
+	if !env.IsObject() {
+		return nil, fmt.Errorf("parse establishment: expected object envelope")
 	}
-	var partial struct {
-		General  GeneralConfig          `json:"general"`
-		Servers  map[string]ServerEntry `json:"servers"`
-		ShardMap struct {
-			Default map[string]ShardAssignment `json:"default"`
-		} `json:"shardMap"`
-		Schemas  map[string]SchemaEntry    `json:"schemas"`
-		Searches map[string]map[string]any `json:"searches"`
-		Auth     map[string]any            `json:"auth"`
-	}
-	if err := json.Unmarshal(body, &partial); err != nil {
-		return nil, fmt.Errorf("parse establishment: %w", err)
-	}
+
 	est := &Establishment{
-		General:  partial.General,
-		Servers:  partial.Servers,
-		ShardMap: partial.ShardMap.Default,
-		Schemas:  partial.Schemas,
-		Searches: partial.Searches,
-		Auth:     partial.Auth,
-		Raw:      raw,
+		Servers:  map[string]ServerEntry{},
+		ShardMap: map[string]ShardAssignment{},
+		Schemas:  map[string]SchemaEntry{},
+		Searches: env.Get("searches"),
+		Auth:     env.Get("auth"),
+		Env:      env,
 	}
-	if est.Servers == nil {
-		est.Servers = map[string]ServerEntry{}
+
+	if general := env.Get("general"); general.IsObject() {
+		if err := general.ToStructTry(&est.General); err != nil {
+			return nil, fmt.Errorf("parse establishment general: %w", err)
+		}
 	}
-	if est.ShardMap == nil {
-		est.ShardMap = map[string]ShardAssignment{}
+
+	if servers := env.Get("servers"); servers.IsObject() {
+		for name := range servers.ToMap() {
+			entry := servers.Get(name)
+			var se ServerEntry
+			if err := entry.ToStructTry(&se); err != nil {
+				return nil, fmt.Errorf("parse establishment server %q: %w", name, err)
+			}
+			est.Servers[name] = se
+		}
 	}
+
+	if shardMap := env.Get("shardMap"); shardMap.IsObject() {
+		defaultMap := shardMap.Get("default")
+		if defaultMap.IsObject() {
+			for rawRange := range defaultMap.ToMap() {
+				var a ShardAssignment
+				if err := defaultMap.Get(rawRange).ToStructTry(&a); err != nil {
+					return nil, fmt.Errorf("parse establishment shard %q: %w", rawRange, err)
+				}
+				est.ShardMap[rawRange] = a
+			}
+		}
+	}
+
+	if schemas := env.Get("schemas"); schemas.IsObject() {
+		for name := range schemas.ToMap() {
+			entry := schemas.Get(name)
+			est.Schemas[name] = SchemaEntry{
+				Version: entry.Get("version").ToIntOrDefault(0),
+				Doc:     entry.Get("schema"),
+			}
+		}
+	}
+
 	var ranges []shard.Range
 	for rawRange := range est.ShardMap {
 		r, err := shard.ParseRange(rawRange)

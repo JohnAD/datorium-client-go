@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	"github.com/JohnAD/datorium-client-go/refs"
+	"github.com/JohnAD/ojson"
 )
 
 // ResolveDirectRef reads the document targeted by a @__Collection__id string.
@@ -21,39 +22,39 @@ func (c *Client) ResolveDirectRef(ctx context.Context, ref string, opts *ReadOpt
 
 // ResolveRefsInSOT walks top-level SOT string fields and resolves direct refs
 // up to maxDepth (1 = only the provided document's direct fields).
-func (c *Client) ResolveRefsInSOT(ctx context.Context, sot map[string]any, maxDepth int) (map[string]ReadResult, error) {
+func (c *Client) ResolveRefsInSOT(ctx context.Context, sot ojson.JSONValue, maxDepth int) (map[string]ReadResult, error) {
 	if maxDepth < 1 {
 		maxDepth = 1
 	}
 	out := map[string]ReadResult{}
 	seen := map[string]bool{}
-	var walk func(doc map[string]any, depth int) error
-	walk = func(doc map[string]any, depth int) error {
-		if depth > maxDepth {
+	var walk func(doc ojson.JSONValue, depth int) error
+	walk = func(doc ojson.JSONValue, depth int) error {
+		if depth > maxDepth || !doc.IsObject() {
 			return nil
 		}
-		for _, v := range doc {
-			s, ok := v.(string)
-			if !ok {
+		for key := range doc.ToMap() {
+			v := doc.Get(key)
+			if !v.IsString() {
 				continue
 			}
-			r, isRef, err := refs.Parse(s)
+			r, isRef, err := refs.Parse(v.ToStringOrEmpty())
 			if err != nil {
 				return err
 			}
 			if !isRef || r.Kind != refs.Direct {
 				continue
 			}
-			key := r.Collection + "/" + r.ID
-			if seen[key] {
+			refKey := r.Collection + "/" + r.ID
+			if seen[refKey] {
 				continue
 			}
-			seen[key] = true
+			seen[refKey] = true
 			rr, err := c.Read(ctx, r.Collection, r.ID, nil)
 			if err != nil {
 				return err
 			}
-			out[key] = rr
+			out[refKey] = rr
 			if err := walk(rr.SOT, depth+1); err != nil {
 				return err
 			}

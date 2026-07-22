@@ -19,7 +19,7 @@ func TestDecodeContractFixtures(t *testing.T) {
 		t.Fatalf("create_ok: %#v err=%v", res, err)
 	}
 	if res.StringField("id") == "" || res.StringField("#") == "" {
-		t.Fatalf("missing fields: %#v", res.Raw)
+		t.Fatalf("missing fields: %#v", res.Env)
 	}
 
 	wmBody, err := os.ReadFile(filepath.Join(root, "wrong_machine.json"))

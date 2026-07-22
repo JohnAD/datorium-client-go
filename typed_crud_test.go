@@ -3,6 +3,7 @@ package datorium_test
 import (
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -18,12 +19,29 @@ type todoDoc struct {
 	Status string `json:"status"`
 }
 
+func todoSchemaDoc() map[string]any {
+	return map[string]any{
+		"kind": "object",
+		"children": []any{
+			map[string]any{"name": "title", "kind": "string"},
+			map[string]any{"name": "status", "kind": "string"},
+		},
+	}
+}
+
+func withTodosSchema(doc map[string]any) map[string]any {
+	doc["schemas"] = map[string]any{
+		"Todos": map[string]any{"version": 0, "schema": todoSchemaDoc()},
+	}
+	return doc
+}
+
 func TestEstablishCatalogMismatch(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /datoriumdb/v1/establish", func(w http.ResponseWriter, r *http.Request) {
 		doc := establishDoc(r.Host)
 		doc["schemas"] = map[string]any{
-			"Todos": map[string]any{"version": 1, "schema": map[string]any{}},
+			"Todos": map[string]any{"version": 1, "schema": todoSchemaDoc()},
 		}
 		writeEnv(w, doc)
 	})
@@ -70,13 +88,10 @@ func TestEstablishCatalogCollectionNotFound(t *testing.T) {
 
 func TestCreateDocOrderedVoidAndReadDelete(t *testing.T) {
 	var createBody, deleteBody string
+	var createdID string
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /datoriumdb/v1/establish", func(w http.ResponseWriter, r *http.Request) {
-		doc := establishDoc(r.Host)
-		doc["schemas"] = map[string]any{
-			"Todos": map[string]any{"version": 0, "schema": map[string]any{}},
-		}
-		writeEnv(w, doc)
+		writeEnv(w, withTodosSchema(establishDoc(r.Host)))
 	})
 	mux.HandleFunc("POST /datoriumdb/v1/command", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
@@ -84,19 +99,23 @@ func TestCreateDocOrderedVoidAndReadDelete(t *testing.T) {
 		switch {
 		case strings.HasPrefix(body, "create "):
 			createBody = body
+			parts := strings.SplitN(body, " ", 4)
+			if len(parts) < 4 {
+				t.Fatalf("bad create line %q", body)
+			}
+			createdID = parts[2]
 			writeEnv(w, map[string]any{
 				"ok": true, "command": "create", "collection": "Todos",
-				"id": "todo1", "$": "Todos:0", "#": "ver1", "operationId": "op1",
+				"id": createdID, "$": "Todos:0", "#": "ver1", "operationId": "op1",
 			})
 		case strings.HasPrefix(body, "read "):
-			// Deliberate key order in JSON text: title before status; system fields first.
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"ok":true,"command":"read","collection":"Todos","id":"todo1","sot":{"!":"todo1","$":"Todos:0","#":"ver1","title":"Buy milk","status":"open"}}`))
+			_, _ = fmt.Fprintf(w, `{"ok":true,"command":"read","collection":"Todos","id":%q,"sot":{"!":%q,"$":"Todos:0","#":"ver1","title":"Buy milk","status":"open"}}`, createdID, createdID)
 		case strings.HasPrefix(body, "delete "):
 			deleteBody = body
 			writeEnv(w, map[string]any{
 				"ok": true, "command": "delete", "collection": "Todos",
-				"id": "todo1", "$": "Todos:0", "#": "ver1", "operationId": "op2",
+				"id": createdID, "$": "Todos:0", "#": "ver1", "operationId": "op2",
 			})
 		default:
 			writeEnv(w, map[string]any{"ok": false, "errors": []any{map[string]any{"code": "unknownCommand", "message": "nope"}}})
@@ -114,16 +133,23 @@ func TestCreateDocOrderedVoidAndReadDelete(t *testing.T) {
 	if err := client.Establish(ctx, Todos); err != nil {
 		t.Fatal(err)
 	}
-
-	wr, err := datorium.CreateDoc(ctx, client, Todos, ojson.NewVoid(), todoDoc{Title: "Buy milk", Status: "open"})
+	todos, err := Todos.Bind(client)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if wr.ID != "todo1" || wr.Version != "ver1" {
+
+	wr, err := todos.CreateDoc(ctx, nil, todoDoc{Title: "Buy milk", Status: "open"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wr.ID == "" || wr.ID == "null" || wr.Version != "ver1" {
 		t.Fatalf("create %#v", wr)
 	}
-	if !strings.HasPrefix(createBody, "create Todos null ") {
-		t.Fatalf("expected null parm, got %q", createBody)
+	if !strings.HasPrefix(createBody, "create Todos "+wr.ID+" ") {
+		t.Fatalf("expected client-minted id in command, got %q", createBody)
+	}
+	if strings.Contains(createBody, " null ") {
+		t.Fatalf("server null parm must not be used: %q", createBody)
 	}
 	titleIdx := strings.Index(createBody, `"title"`)
 	statusIdx := strings.Index(createBody, `"status"`)
@@ -137,18 +163,21 @@ func TestCreateDocOrderedVoidAndReadDelete(t *testing.T) {
 		t.Fatalf("missing operationId in %q", createBody)
 	}
 
-	rr, err := datorium.ReadDoc(ctx, client, Todos, wr.ID, nil)
+	item, err := todos.GetDoc(ctx, wr.ID)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rr.Doc.Title != "Buy milk" || rr.Doc.Status != "open" {
-		t.Fatalf("doc %#v", rr.Doc)
+	if item.Doc.Title != "Buy milk" || item.Doc.Status != "open" {
+		t.Fatalf("doc %#v", item.Doc)
 	}
-	if rr.Meta.ID != "todo1" || rr.Meta.Schema != "Todos:0" || rr.Meta.Version != "ver1" {
-		t.Fatalf("meta %#v", rr.Meta)
+	if item.OriginalDoc.Title != "Buy milk" || item.OriginalDoc.Status != "open" {
+		t.Fatalf("original %#v", item.OriginalDoc)
+	}
+	if item.Meta.ID != wr.ID || item.Meta.Schema != "Todos:0" || item.Meta.Version != "ver1" {
+		t.Fatalf("meta %#v", item.Meta)
 	}
 
-	if _, err := datorium.DeleteDoc(ctx, client, Todos, wr.ID, rr.Meta.Version); err != nil {
+	if _, err := todos.DeleteDoc(ctx, item); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(deleteBody, `"$":"Todos:0"`) || !strings.Contains(deleteBody, `"#":"ver1"`) {
@@ -159,11 +188,7 @@ func TestCreateDocOrderedVoidAndReadDelete(t *testing.T) {
 func TestCreateDocRejectsEmptyStringID(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /datoriumdb/v1/establish", func(w http.ResponseWriter, r *http.Request) {
-		doc := establishDoc(r.Host)
-		doc["schemas"] = map[string]any{
-			"Todos": map[string]any{"version": 0, "schema": map[string]any{}},
-		}
-		writeEnv(w, doc)
+		writeEnv(w, withTodosSchema(establishDoc(r.Host)))
 	})
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
@@ -177,9 +202,104 @@ func TestCreateDocRejectsEmptyStringID(t *testing.T) {
 	if err := client.Establish(ctx, Todos); err != nil {
 		t.Fatal(err)
 	}
-	_, err = datorium.CreateDoc(ctx, client, Todos, ojson.NewString(""), todoDoc{Title: "x", Status: "open"})
+	todos, err := Todos.Bind(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	empty := ""
+	_, err = todos.CreateDoc(ctx, &empty, todoDoc{Title: "x", Status: "open"})
 	if err == nil || !strings.Contains(err.Error(), "empty string id") {
 		t.Fatalf("got %v", err)
+	}
+}
+
+func TestCreateDocExplicitID(t *testing.T) {
+	var gotBody string
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /datoriumdb/v1/establish", func(w http.ResponseWriter, r *http.Request) {
+		writeEnv(w, withTodosSchema(establishDoc(r.Host)))
+	})
+	mux.HandleFunc("POST /datoriumdb/v1/command", func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		writeEnv(w, map[string]any{
+			"ok": true, "command": "create", "collection": "Todos",
+			"id": "todo-42", "$": "Todos:0", "#": "ver1", "operationId": "op1",
+		})
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+
+	client, err := datorium.New(datorium.Config{EstablishmentURL: ts.URL, Token: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	Todos := datorium.MustCollection[todoDoc]("Todos", 0)
+	if err := client.Establish(context.Background(), Todos); err != nil {
+		t.Fatal(err)
+	}
+	todos, err := Todos.Bind(client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	id := "todo-42"
+	wr, err := todos.CreateDoc(context.Background(), &id, todoDoc{Title: "x", Status: "open"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if wr.ID != "todo-42" {
+		t.Fatalf("%#v", wr)
+	}
+	if !strings.HasPrefix(gotBody, "create Todos todo-42 ") {
+		t.Fatalf("%q", gotBody)
+	}
+}
+
+func TestBindRequiresEstablish(t *testing.T) {
+	client, err := datorium.New(datorium.Config{EstablishmentURL: "http://127.0.0.1:9", Token: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	Todos := datorium.MustCollection[todoDoc]("Todos", 0)
+	_, err = Todos.Bind(client)
+	if err == nil || !strings.Contains(err.Error(), "not established") {
+		t.Fatalf("got %v", err)
+	}
+}
+
+func TestBindCompilesDatoriumRefFormats(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /datoriumdb/v1/establish", func(w http.ResponseWriter, r *http.Request) {
+		doc := establishDoc(r.Host)
+		doc["schemas"] = map[string]any{
+			"Todos": map[string]any{
+				"version": 0,
+				"schema": map[string]any{
+					"kind": "object",
+					"children": []any{
+						map[string]any{"name": "title", "kind": "string"},
+						map[string]any{"name": "status", "kind": "string"},
+						map[string]any{"name": "list", "kind": "string", "format": "DatoriumDirectRef"},
+						map[string]any{"name": "listSummary", "kind": "string", "format": "DatoriumCachedRef"},
+					},
+				},
+			},
+		}
+		writeEnv(w, doc)
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+
+	client, err := datorium.New(datorium.Config{EstablishmentURL: ts.URL, Token: "t"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	Todos := datorium.MustCollection[todoDoc]("Todos", 0)
+	if err := client.Establish(context.Background(), Todos); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := Todos.Bind(client); err != nil {
+		t.Fatalf("Bind with Datorium ref formats: %v", err)
 	}
 }
 
@@ -187,11 +307,11 @@ func TestBuildCommandOrderedPreservesFieldOrder(t *testing.T) {
 	doc := ojson.NewObject()
 	doc.Set("title", ojson.NewString("a"))
 	doc.Set("status", ojson.NewString("b"))
-	line, err := datorium.BuildCommandOrdered("create", "Todos", "null", doc)
+	line, err := datorium.BuildCommandOrdered("create", "Todos", "01TESTID000000000000000000", doc)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `create Todos null {"title":"a","status":"b"}`
+	want := `create Todos 01TESTID000000000000000000 {"title":"a","status":"b"}`
 	if line != want {
 		t.Fatalf("got %q want %q", line, want)
 	}
