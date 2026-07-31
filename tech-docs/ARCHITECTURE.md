@@ -47,7 +47,7 @@ flowchart LR
 ## Retry policy
 
 1. On transport failure: optional bounded backoff retries (configurable).
-2. On `wrongMachine`: refresh establish if `configVersion` is newer/stale, rewrite URL, retry up to a small bound.
+2. On `wrongMachine`: always refresh establish, recompute the route locally (ignore bounce `correctServer`/`baseURL`; bounce `configVersion` is diagnostic only), retry up to a small bound.
 3. On `versionMismatch`: surface typed error; optional helper re-reads and retries once.
 4. Writes include a client-generated ULID `operationId` unless the caller supplies one.
 5. **Create IDs** are always client-generated (ULID via `NewDocumentID` when the

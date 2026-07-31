@@ -86,7 +86,9 @@ func (c *Client) Read(ctx context.Context, collection, id string, opts *ReadOpti
 	if err != nil {
 		return ReadResult{}, err
 	}
-	res, err := c.executeRouted(ctx, route, line)
+	res, err := c.executeRouted(ctx, route, line, func(est *Establishment) (Route, error) {
+		return c.routeDocument(est, id, RouteRead)
+	})
 	if err != nil {
 		return ReadResult{}, err
 	}
@@ -112,7 +114,9 @@ func (c *Client) Patch(ctx context.Context, collection, id string, detail map[st
 	if err != nil {
 		return WriteResult{}, err
 	}
-	res, err := c.executeRouted(ctx, route, line)
+	res, err := c.executeRouted(ctx, route, line, func(est *Establishment) (Route, error) {
+		return c.routeDocument(est, id, RouteWrite)
+	})
 	if err != nil {
 		return WriteResult{}, err
 	}
@@ -137,7 +141,9 @@ func (c *Client) Delete(ctx context.Context, collection, id string, detail map[s
 	if err != nil {
 		return WriteResult{}, err
 	}
-	res, err := c.executeRouted(ctx, route, line)
+	res, err := c.executeRouted(ctx, route, line, func(est *Establishment) (Route, error) {
+		return c.routeDocument(est, id, RouteWrite)
+	})
 	if err != nil {
 		return WriteResult{}, err
 	}

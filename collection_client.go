@@ -189,7 +189,9 @@ func (cc CollectionClient[T]) GetDocOpts(ctx context.Context, id string, opts *R
 	if err != nil {
 		return zero, err
 	}
-	res, err := cc.client.executeRouted(ctx, route, line)
+	res, err := cc.client.executeRouted(ctx, route, line, func(est *Establishment) (Route, error) {
+		return cc.client.routeDocument(est, id, RouteRead)
+	})
 	if err != nil {
 		return zero, err
 	}
@@ -227,7 +229,10 @@ func (cc CollectionClient[T]) DeleteDoc(ctx context.Context, item CollectionItem
 	if err != nil {
 		return WriteResult{}, err
 	}
-	res, err := cc.client.executeRouted(ctx, route, line)
+	docID := item.Meta.ID
+	res, err := cc.client.executeRouted(ctx, route, line, func(est *Establishment) (Route, error) {
+		return cc.client.routeDocument(est, docID, RouteWrite)
+	})
 	if err != nil {
 		return WriteResult{}, err
 	}
@@ -336,7 +341,10 @@ func (cc CollectionClient[T]) PatchDoc(ctx context.Context, patch CollectionPatc
 	if err != nil {
 		return WriteResult{}, err
 	}
-	res, err := cc.client.executeRouted(ctx, route, line)
+	docID := patch.id
+	res, err := cc.client.executeRouted(ctx, route, line, func(est *Establishment) (Route, error) {
+		return cc.client.routeDocument(est, docID, RouteWrite)
+	})
 	if err != nil {
 		return WriteResult{}, err
 	}

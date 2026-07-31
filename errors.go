@@ -22,17 +22,22 @@ const (
 
 // AppError is an application-level failure (HTTP often still 200).
 type AppError struct {
-	Code          string
-	Message       string
-	Errors        []APIError
-	Result        Result
-	ShardSlot     string
-	CorrectServer string
-	BaseURL       string
+	Code    string
+	Message string
+	Errors  []APIError
+	Result  Result
+	// ConfigVersion is diagnostic-only on wrongMachine: what the refusing
+	// server believes. It is never authoritative establishment version.
 	ConfigVersion int
 	Collection    string
 	ID            string
 	Command       string
+
+	// Deprecated bounce hint fields. Servers no longer emit these; kept
+	// only so older envelopes still parse without becoming routing inputs.
+	ShardSlot     string
+	CorrectServer string
+	BaseURL       string
 }
 
 func (e *AppError) Error() string {

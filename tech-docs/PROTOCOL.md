@@ -42,8 +42,10 @@ HTTP status is typically `200` for application outcomes. Inspect body:
 {"ok": false, "errors": [{"code":"...", "message":"..."}], "...": "..."}
 ```
 
-`wrongMachine` also places `shardSlot`, `correctServer`, `baseURL`, and
-`configVersion` on the **top-level** envelope.
+`wrongMachine` may place a diagnostic `configVersion` on the **top-level**
+envelope (what that refusing server believes). It does not include
+`correctServer`, `baseURL`, or `shardSlot`. Clients always re-fetch
+establishment and recompute the next hop locally.
 
 ## Auth
 

@@ -104,9 +104,8 @@ func TestWrongMachineRetry(t *testing.T) {
 		if n == 1 {
 			writeEnv(w, map[string]any{
 				"ok": false, "command": "read", "collection": "Todos", "id": "todo1",
-				"shardSlot": "00", "correctServer": "server2",
-				"baseURL": "http://" + r.Host, "configVersion": 1,
-				"errors": []any{map[string]any{"code": "wrongMachine", "message": "bounce"}},
+				"configVersion": 1,
+				"errors":        []any{map[string]any{"code": "wrongMachine", "message": "bounce"}},
 			})
 			return
 		}

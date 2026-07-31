@@ -66,8 +66,14 @@ func (c *Client) postCommand(ctx context.Context, baseURL, line string) (Result,
 	return res, nil
 }
 
+// routeResolver recomputes a command route from a fresh establishment document.
+type routeResolver func(est *Establishment) (Route, error)
+
 // executeRouted posts a command with wrongMachine bounce handling.
-func (c *Client) executeRouted(ctx context.Context, initial Route, line string) (Result, error) {
+// On wrongMachine it always re-fetches establishment and recomputes the next
+// hop via resolve. Bounce correctServer/baseURL/shardSlot are ignored;
+// configVersion on the bounce is diagnostic-only (what that server thinks).
+func (c *Client) executeRouted(ctx context.Context, initial Route, line string, resolve routeResolver) (Result, error) {
 	base := initial.BaseURL
 	if base == "" {
 		base = c.cfg.EstablishmentURL
@@ -89,25 +95,23 @@ func (c *Client) executeRouted(ctx context.Context, initial Route, line string) 
 		if attempt == c.wmRetries {
 			return res, ae
 		}
-		// Refresh establish when the bounce advertises a config version we
-		// don't have, or whenever we lack a cache.
-		est := c.cache.get()
-		if est == nil || (ae.ConfigVersion > 0 && ae.ConfigVersion > est.General.Version) {
-			_ = c.Establish(ctx)
-			est = c.cache.get()
+		// Always refresh establishment. Bounce configVersion is not
+		// authoritative and must not skip this refresh.
+		if err := c.Establish(ctx); err != nil {
+			return res, err
 		}
-		next := ae.BaseURL
-		server := ae.CorrectServer
-		if est != nil && server != "" {
-			if u := est.ServerBaseURL(server); u != "" {
-				next = u
-			}
-			base = c.rewriteURL(server, next)
-		} else if next != "" {
-			base = c.rewriteURL(server, next)
-		} else {
+		est := c.cache.get()
+		if est == nil || resolve == nil {
 			return res, ae
 		}
+		route, err := resolve(est)
+		if err != nil {
+			return res, err
+		}
+		if route.BaseURL == "" {
+			return res, ae
+		}
+		base = route.BaseURL
 	}
 	return last, appErrorFromResult(last)
 }

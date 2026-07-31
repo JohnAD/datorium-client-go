@@ -35,7 +35,9 @@ func (c *Client) executeCreate(ctx context.Context, collection, id, line string)
 	if err != nil {
 		return WriteResult{}, err
 	}
-	res, err := c.executeRouted(ctx, route, line)
+	res, err := c.executeRouted(ctx, route, line, func(est *Establishment) (Route, error) {
+		return c.routeDocument(est, id, RouteWrite)
+	})
 	if err == nil {
 		return writeResultFrom(res), nil
 	}

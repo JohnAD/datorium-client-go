@@ -52,7 +52,21 @@ func (c *Client) Search(ctx context.Context, collection, searchName string, vars
 		}
 		route = Route{ServerName: name, BaseURL: c.rewriteURL(name, u)}
 	}
-	res, err := c.executeRouted(ctx, route, line)
+	resolve := func(est *Establishment) (Route, error) {
+		if pathSegments != nil {
+			return c.routeSearch(est, searchpath.ShardSlot(pathSegments))
+		}
+		name := est.General.EstablishmentServer
+		if c.cfg.PreferServer != "" {
+			name = c.cfg.PreferServer
+		}
+		u := est.ServerBaseURL(name)
+		if u == "" {
+			u = c.cfg.EstablishmentURL
+		}
+		return Route{ServerName: name, BaseURL: c.rewriteURL(name, u)}, nil
+	}
+	res, err := c.executeRouted(ctx, route, line, resolve)
 	if err != nil {
 		return SearchResult{}, err
 	}
