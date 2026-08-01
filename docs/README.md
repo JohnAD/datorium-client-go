@@ -15,4 +15,4 @@ These pages describe **what to call and how**. For library internals, protocol e
 | [Errors](errors.md) | `AppError`, transport errors, common codes |
 | [Utilities and packages](utilities.md) | IDs, command builders, `refs` / `searchpath` / `shard` |
 
-Compatible with DatoriumDB `v0.0.2` / HTTP API `v1`.
+Compatible with DatoriumDB `v0.0.5` / HTTP API `v1`.

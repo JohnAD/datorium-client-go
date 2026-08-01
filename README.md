@@ -1,12 +1,11 @@
 # datorium-client-go
 
-Idiomatic Go smart client for [DatoriumDB](https://github.com/JohnAD/datoriumdb).
+Idiomatic Go client for [DatoriumDB](https://github.com/JohnAD/datoriumdb).
 
-This library talks to DatoriumDB's HTTP API `v1`: it caches establishment
-config, routes create/read/patch/delete/search commands to the correct shard
-members, retries `wrongMachine` responses, and resolves document references.
+DatoriumDB lets you store your database as git-trackable JSON documents in
+ordinary directories — and still scale with sharding and clusters.
 
-Status: early development. Compatible with DatoriumDB `v0.0.2` / API `v1`.
+Status: early development. Compatible with DatoriumDB `v0.0.5` / API `v1`.
 
 ## Install
 
@@ -16,60 +15,11 @@ go get github.com/JohnAD/datorium-client-go@latest
 
 Requires Go 1.25.11 or newer (matching the DatoriumDB module).
 
-## Quick start
+## Quick start (typed collections)
 
-```go
-package main
-
-import (
-	"context"
-	"fmt"
-	"log"
-
-	datorium "github.com/JohnAD/datorium-client-go"
-)
-
-func main() {
-	ctx := context.Background()
-	client, err := datorium.New(datorium.Config{
-		EstablishmentURL: "http://127.0.0.1:8081",
-		Token:            "Bearer-token-here",
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer client.Close()
-
-	if err := client.Establish(ctx); err != nil {
-		log.Fatal(err)
-	}
-
-	// Empty id → client mints a ULID (server never assigns create IDs).
-	created, err := client.Create(ctx, "Todos", "", map[string]any{
-		"$":     "Todos:0",
-		"title": "Buy milk",
-		"status": "open",
-	})
-	if err != nil {
-		log.Fatal(err)
-	}
-	fmt.Println("created", created.ID, "version", created.Version)
-}
-```
-
-> **Order warning:** Raw helpers that take `map[string]any` for document content are
-> **order-unsafe**. Go maps randomize key order; DatoriumDB honors client field
-> order for non-schema (non-SOT) fields when storing git-tracked JSON. Prefer the
-> typed collection API below (or build details with [`ojson`](https://github.com/JohnAD/ojson))
-> whenever document field order matters. `Create` marshals the command line once
-> before network attempts so retries cannot reshuffle keys, and may confirm
-> ambiguous create failures with a follow-up read.
-
-## Typed collections
-
-Declare a `Collection[T]` descriptor, verify it in `Establish`, then `Bind` a
-typed `CollectionClient[T]` and use its methods. Pass `nil` as the create id to
-mint a ULID locally (the server never assigns create IDs). See
+Create a general client, then `Bind` a typed client for each collection you use.
+The first `Bind` connects to the establishment server and checks the schema.
+See
 [`docs/documents.md`](docs/documents.md) and [`docs/patches.md`](docs/patches.md).
 
 ```go
@@ -101,25 +51,26 @@ func main() {
 	}
 	defer client.Close()
 
-	if err := client.Establish(ctx, Todos); err != nil {
+	todos, err := Todos.Bind(ctx, client)
+	if err != nil {
 		log.Fatal(err) // CatalogError if name/version mismatch
 	}
-	todos, err := Todos.Bind(client)
-	if err != nil {
-		log.Fatal(err)
-	}
 
+	// CREATE — nil id means the client mints a ULID
 	created, err := todos.CreateDoc(ctx, nil, Todo{
 		Title: "Buy milk", Status: "open",
 	})
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	// READ
 	item, err := todos.GetDoc(ctx, created.ID)
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	// PATCH
 	item.Doc.Status = "done"
 	patch, err := todos.CreatePatchFromChanges(item)
 	if err != nil {
@@ -130,56 +81,48 @@ func main() {
 		log.Fatal(err)
 	}
 	fmt.Println(item.Doc.Title, patched.Version)
+
+	// DELETE — use id + version from the write result
+	if _, err := todos.DeleteDoc(ctx, patched.ID, patched.Version); err != nil {
+		log.Fatal(err)
+	}
 }
 ```
 
-(`CollectionClient[T]` carries the type parameter so methods work; Go does not
-allow type parameters on methods of the non-generic `*Client`.)
+## Raw API (escape hatch)
+
+Stringly-typed `map[string]any` helpers remain available, but they are **not**
+recommended for application code: Go maps randomize key order, and DatoriumDB
+honors client field order for non-schema fields in git-tracked JSON. Prefer
+typed collections (or [`ojson`](https://github.com/JohnAD/ojson)) whenever order
+matters.
+
+```go
+created, err := client.Create(ctx, "Todos", "", map[string]any{
+	"$": "Todos:0", "title": "Buy milk", "status": "open",
+})
+```
+
+Empty id → this client mints a ULID (the server never assigns create IDs).
+Raw helpers fetch establishment config on first use; you do not need a separate
+`Establish` call unless you want an explicit whole-catalog check.
 
 ## Features
 
-- Bearer-authenticated HTTP transport with JSON envelopes (`ok` / `errors`)
-- Establishment fetch + in-memory cache with config-version tracking
-- CRC32 shard slot routing for writes (SOT) and reads (read members)
-- Bounded `wrongMachine` retry with optional host URL rewriting for Docker
-- Typed collection clients (`Collection[T].Bind` → `CollectionClient[T]` methods)
-- Raw CRUD + search helpers, ULID `operationId` support
-- Direct (`@`) and cached (`@@`) reference helpers
-- Front-page helpers for arrays of cached refs (`AppendCachedRefOp`, `SummariesForArrayField`)
-- Opt-in two-shard Todo integration demo (`./start_integration_test.sh`)
+- Talks to DatoriumDB over HTTP with bearer auth
+- Discovers the cluster layout on first use and keeps it cached
+- Sends each request to the right shard automatically
+- Typed collection clients for create, read, patch, and delete
+- Optional raw helpers when you need an escape hatch
+- Helpers for live and cached document references
 
 ## Documentation
 
-**Using the library:** start at [`docs/README.md`](docs/README.md) (API guide for application authors).
+**Using the library:** start at [`docs/README.md`](docs/README.md).
 
-**Developing this library** (internals, protocol notes, roadmap, release):
-start at [`tech-docs/ROADMAP.md`](tech-docs/ROADMAP.md).
-
-Server protocol source of truth lives in the sibling DatoriumDB repository
-(`tech-docs/ACCESS-LANGUAGE.md`, `SHARDING.md`, `AUTHENTICATION.md`,
-`ESTABLISHMENT-CONFIG.md`, `SEARCHING.md`).
-
-## Integration demo
-
-Requires Docker with Compose support and a checkout of `datoriumdb` next to
-this repository (or set `DATORIUMDB_SRC`):
-
-```bash
-./start_integration_test.sh
-```
-
-The script builds a two-shard Compose stack (`00-7F` / `80-FF`), runs a host
-Todo CLI through this client library, then tears the stack down.
-
-## Development
-
-```bash
-gofmt -w .
-go test ./... -race -count=1
-./start_integration_test.sh   # optional; needs Docker + sibling datoriumdb
-```
-
-See [CONTRIBUTING.md](CONTRIBUTING.md) and [tech-docs/RELEASE-CHECKLIST.md](tech-docs/RELEASE-CHECKLIST.md).
+**Developing this library:** start at [`tech-docs/ROADMAP.md`](tech-docs/ROADMAP.md)
+(testing, integration demo, architecture, release checklist). Also see
+[CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

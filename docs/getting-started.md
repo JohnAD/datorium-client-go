@@ -19,10 +19,6 @@ if err != nil {
     log.Fatal(err)
 }
 defer client.Close()
-
-if err := client.Establish(ctx); err != nil {
-    log.Fatal(err)
-}
 ```
 
 You need:
@@ -30,9 +26,11 @@ You need:
 1. A reachable establishment base URL.
 2. A bearer token (static string or a `TokenSource`).
 
+Raw helpers lazy-fetch establishment on first routed command. Typed apps usually call `Bind` instead (see below).
+
 ## Recommended: typed collections
 
-Prefer structs + `Collection[T]` so document field order stays stable and call sites avoid stringly-typed collection names. Bind a `CollectionClient[T]` after `Establish`. For patches, edit `item.Doc` and call `CreatePatchFromChanges` — see [Patch instructions](patches.md).
+Prefer structs + `Collection[T]` so document field order stays stable and call sites avoid stringly-typed collection names. `Bind` lazily establishes and validates that collection, then returns a `CollectionClient[T]`. For patches, edit `item.Doc` and call `CreatePatchFromChanges` — see [Patch instructions](patches.md).
 
 ```go
 type Todo struct {
@@ -42,12 +40,9 @@ type Todo struct {
 
 var Todos = datorium.MustCollection[Todo]("Todos", 0)
 
-if err := client.Establish(ctx, Todos); err != nil {
-    log.Fatal(err) // CatalogError if the live schema does not match
-}
-todos, err := Todos.Bind(client)
+todos, err := Todos.Bind(ctx, client)
 if err != nil {
-    log.Fatal(err)
+    log.Fatal(err) // CatalogError if the live schema does not match
 }
 
 wr, err := todos.CreateDoc(ctx, nil, Todo{
@@ -55,6 +50,8 @@ wr, err := todos.CreateDoc(ctx, nil, Todo{
 })
 // wr.ID and wr.Version identify the new document
 ```
+
+Optional: call `client.Establish(ctx, Todos, Users, …)` once at startup to validate a whole catalog before binding. See [Client and config](client.md).
 
 See [Documents](documents.md), [Patch instructions](patches.md), and [Client and config](client.md).
 

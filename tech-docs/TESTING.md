@@ -75,8 +75,7 @@ ranges so routing is exercised for real.
 | Step | What happens |
 |------|----------------|
 | `WAIT_READY` | Polls readiness through the client until server1 reports `ready: true`. |
-| `ESTABLISH` | `GET /establish` with catalog `Users` / `TodoLists` / `Todos`, caches config, prints name and version. |
-| `BIND_TYPED` | `Users.Bind` / `TodoLists.Bind` / `Todos.Bind` → typed `CollectionClient`s (compile live schemas). |
+| `BIND_TYPED` | `Users.Bind` / `TodoLists.Bind` / `Todos.Bind` → typed `CollectionClient`s (first Bind lazy-establishes + compiles live schemas). |
 | `PICK_IDS` | Chooses five IDs: two Users (low + high), one TodoList (low), two Todos (high). Logs each ID and CRC32 slot hex. |
 | `CREATING_USERS_RAW` | Raw `Client.Create` for **Ada** (`Users`, empty `todoLists`). |
 | `CREATING_USERS_TYPED` | Typed `CreateDoc` for **Grace**. |
@@ -104,7 +103,7 @@ after `READ_USER_FRONT_PAGE` creates the list stub.
 
 ### What this proves
 
-- Bearer auth + establishment caching + catalog-checked `Establish`
+- Bearer auth + establishment caching via lazy `Bind` (optional whole-catalog `Establish`)
 - CRC32 shard routing across `00-7F` / `80-FF` with host URL rewrite
 - Create / read / patch / delete in **both** raw `Client` and typed `CollectionClient` forms
 - Typed patch paths: `CreatePatchFromChanges` and hand-built `CreatePatch`

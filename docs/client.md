@@ -67,10 +67,11 @@ Fetches and caches establishment config (servers, shard map, schemas, searches, 
 - No `cols`: fetch and cache only (raw / dynamic apps).
 - With `cols`: also validates each declared collection name and schema version against live `schemas`. Mismatch → [`CatalogError`](errors.md). Extra server collections not listed in `cols` are fine.
 
-Typed apps should pass their catalog every time they establish at startup:
+Typed apps usually skip an explicit `Establish`: `Collection.Bind` lazy-establishes and validates that one collection. Use `Establish` when you want one startup check for a whole catalog:
 
 ```go
 err := client.Establish(ctx, Todos, Users, TodoLists)
+todos, err := Todos.Bind(ctx, client) // reuses cache
 ```
 
 ## Schema history
@@ -98,4 +99,4 @@ func (e *Establishment) AssignmentForSlot(slot byte) (ShardAssignment, bool)
 func (e *Establishment) ServerBaseURL(name string) string
 ```
 
-For typed apps, call `Todos.Bind(client)` after `Establish`; the bound `CollectionClient` exposes `CompiledSchema()` from the schema compiled at bind time. Most applications never need the other helpers; the client routes automatically.
+For typed apps, call `Todos.Bind(ctx, client)`; the bound `CollectionClient` exposes `CompiledSchema()` from the schema compiled at bind time. Most applications never need the other helpers; the client routes automatically.

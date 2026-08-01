@@ -42,7 +42,7 @@ Milestones for `github.com/JohnAD/datorium-client-go`.
 ## Milestone 5 — Release hardening
 
 - Package docs and examples
-- Compatibility matrix for DatoriumDB `v0.0.2`
+- Compatibility matrix for DatoriumDB `v0.0.5`
 - Semantic-version release checklist
 
 **Done when:** README/examples/CI green and `CHANGELOG` ready for `v0.1.0`.

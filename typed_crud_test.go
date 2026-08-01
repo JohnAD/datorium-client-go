@@ -130,10 +130,7 @@ func TestCreateDocOrderedVoidAndReadDelete(t *testing.T) {
 	}
 	ctx := context.Background()
 	Todos := datorium.MustCollection[todoDoc]("Todos", 0)
-	if err := client.Establish(ctx, Todos); err != nil {
-		t.Fatal(err)
-	}
-	todos, err := Todos.Bind(client)
+	todos, err := Todos.Bind(ctx, client)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -177,7 +174,7 @@ func TestCreateDocOrderedVoidAndReadDelete(t *testing.T) {
 		t.Fatalf("meta %#v", item.Meta)
 	}
 
-	if _, err := todos.DeleteDoc(ctx, item); err != nil {
+	if _, err := todos.DeleteDoc(ctx, item.Meta.ID, item.Meta.Version); err != nil {
 		t.Fatal(err)
 	}
 	if !strings.Contains(deleteBody, `"$":"Todos:0"`) || !strings.Contains(deleteBody, `"#":"ver1"`) {
@@ -199,10 +196,7 @@ func TestCreateDocRejectsEmptyStringID(t *testing.T) {
 	}
 	ctx := context.Background()
 	Todos := datorium.MustCollection[todoDoc]("Todos", 0)
-	if err := client.Establish(ctx, Todos); err != nil {
-		t.Fatal(err)
-	}
-	todos, err := Todos.Bind(client)
+	todos, err := Todos.Bind(ctx, client)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -235,10 +229,7 @@ func TestCreateDocExplicitID(t *testing.T) {
 		t.Fatal(err)
 	}
 	Todos := datorium.MustCollection[todoDoc]("Todos", 0)
-	if err := client.Establish(context.Background(), Todos); err != nil {
-		t.Fatal(err)
-	}
-	todos, err := Todos.Bind(client)
+	todos, err := Todos.Bind(context.Background(), client)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -255,15 +246,31 @@ func TestCreateDocExplicitID(t *testing.T) {
 	}
 }
 
-func TestBindRequiresEstablish(t *testing.T) {
-	client, err := datorium.New(datorium.Config{EstablishmentURL: "http://127.0.0.1:9", Token: "t"})
+func TestBindEstablishesLazily(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /datoriumdb/v1/establish", func(w http.ResponseWriter, r *http.Request) {
+		writeEnv(w, withTodosSchema(establishDoc(r.Host)))
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+
+	client, err := datorium.New(datorium.Config{EstablishmentURL: ts.URL, Token: "t"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	Todos := datorium.MustCollection[todoDoc]("Todos", 0)
-	_, err = Todos.Bind(client)
-	if err == nil || !strings.Contains(err.Error(), "not established") {
-		t.Fatalf("got %v", err)
+	if client.CachedEstablishment() != nil {
+		t.Fatal("expected empty cache before Bind")
+	}
+	todos, err := Todos.Bind(context.Background(), client)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if client.CachedEstablishment() == nil {
+		t.Fatal("expected Establish during Bind")
+	}
+	if todos.Collection().Name != "Todos" {
+		t.Fatalf("%#v", todos.Collection())
 	}
 }
 
@@ -295,10 +302,7 @@ func TestBindCompilesDatoriumRefFormats(t *testing.T) {
 		t.Fatal(err)
 	}
 	Todos := datorium.MustCollection[todoDoc]("Todos", 0)
-	if err := client.Establish(context.Background(), Todos); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := Todos.Bind(client); err != nil {
+	if _, err := Todos.Bind(context.Background(), client); err != nil {
 		t.Fatalf("Bind with Datorium ref formats: %v", err)
 	}
 }

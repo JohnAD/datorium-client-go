@@ -58,9 +58,10 @@ flowchart LR
 
 ## Typed collections and document order
 
-Applications declare `Collection[T]` descriptors (name + schema version), pass
-them to `Establish` for catalog validation, then call `Bind` to obtain a
-`CollectionClient[T]`. Typed writes build command detail objects with
+Applications declare `Collection[T]` descriptors (name + schema version) and
+call `Bind` to obtain a `CollectionClient[T]` (lazy-establishes and validates
+that collection on first Bind; optional `Establish` still validates a whole
+catalog at startup). Typed writes build command detail objects with
 [`ojson`](https://github.com/JohnAD/ojson) (`NewObjectFromStructTry` →
 `ToJSONBytes`) so non-SOT field order matches Go struct declaration order.
 Typed reads re-parse `sot` from the original response bytes into

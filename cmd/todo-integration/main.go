@@ -84,30 +84,24 @@ func run() error {
 		return err
 	}
 
-	step("ESTABLISH")
-	if err := client.Establish(ctx, Users, TodoLists, Todos); err != nil {
-		return fmt.Errorf("establish: %w", err)
-	}
-	est := client.CachedEstablishment()
-	if est == nil || est.General.Version < 1 {
-		return fmt.Errorf("establishment cache missing")
-	}
-	detail("establishment %q version %d", est.General.Name, est.General.Version)
-
 	step("BIND_TYPED")
-	users, err := Users.Bind(client)
+	users, err := Users.Bind(ctx, client)
 	if err != nil {
 		return fmt.Errorf("bind Users: %w", err)
 	}
-	todoLists, err := TodoLists.Bind(client)
+	todoLists, err := TodoLists.Bind(ctx, client)
 	if err != nil {
 		return fmt.Errorf("bind TodoLists: %w", err)
 	}
-	todos, err := Todos.Bind(client)
+	todos, err := Todos.Bind(ctx, client)
 	if err != nil {
 		return fmt.Errorf("bind Todos: %w", err)
 	}
-	detail("bound Users, TodoLists, Todos collection clients")
+	est := client.CachedEstablishment()
+	if est == nil || est.General.Version < 1 {
+		return fmt.Errorf("establishment cache missing after Bind")
+	}
+	detail("bound Users, TodoLists, Todos; establishment %q version %d", est.General.Name, est.General.Version)
 
 	step("PICK_IDS")
 	userLow := findID(0x00, 0x7F)
@@ -376,12 +370,12 @@ func run() error {
 	if todoItem.Doc.Status != "done" {
 		return fmt.Errorf("typed todo status=%q want done", todoItem.Doc.Status)
 	}
-	if _, err := todos.DeleteDoc(ctx, todoItem); err != nil {
+	if _, err := todos.DeleteDoc(ctx, todoItem.Meta.ID, todoItem.Meta.Version); err != nil {
 		todoItem, rerr := todos.GetDoc(ctx, todoTyped)
 		if rerr != nil {
 			return fmt.Errorf("typed delete todo: %w (re-get: %v)", err, rerr)
 		}
-		if _, err := todos.DeleteDoc(ctx, todoItem); err != nil {
+		if _, err := todos.DeleteDoc(ctx, todoItem.Meta.ID, todoItem.Meta.Version); err != nil {
 			return fmt.Errorf("typed delete todo retry: %w", err)
 		}
 	}

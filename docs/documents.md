@@ -4,26 +4,23 @@ Create, read, patch, and delete documents. Prefer the **typed collection client*
 
 ## Typed API (recommended)
 
-Declare a catalog descriptor, establish, bind a typed client, then call methods:
+Declare a catalog descriptor, bind a typed client (lazy-establishes), then call methods:
 
 ```go
 var Todos = datorium.MustCollection[Todo]("Todos", 0)
 
-if err := client.Establish(ctx, Todos); err != nil {
-    return err
-}
-todos, err := Todos.Bind(client)
+todos, err := Todos.Bind(ctx, client)
 
 wr, err := todos.CreateDoc(ctx, nil, todo)
 item, err := todos.GetDoc(ctx, id)
 patch, err := todos.CreatePatchFromChanges(item) // or CreatePatch(item, ojsonPatch)
 wr, err = todos.PatchDoc(ctx, patch)
-wr, err = todos.DeleteDoc(ctx, item)
+wr, err = todos.DeleteDoc(ctx, patched.ID, patched.Version)
 ```
 
 ### Declare a collection
 
-Binds a Go struct type to a collection name and schema version. Declare once; pass into `Establish`, then `Bind`.
+Binds a Go struct type to a collection name and schema version. Declare once, then `Bind`.
 
 ```go
 type Todo struct {
@@ -42,10 +39,12 @@ Do **not** put `$` / `!` / `#` on content structs for normal creates — typed c
 ### Bind
 
 ```go
-func (col Collection[T]) Bind(c *Client) (CollectionClient[T], error)
+func (col Collection[T]) Bind(ctx context.Context, c *Client) (CollectionClient[T], error)
 ```
 
-Requires a successful `Establish`. Verifies the live schema name/version and compiles the ojson schema (including registered `DatoriumDirectRef` / `DatoriumCachedRef` string formats). Returns a `CollectionClient[T]` whose items and patches cannot be used with another binding (including another bind of the same descriptor).
+On first use (empty establishment cache), fetches establishment config and validates this collection’s name/version (`CatalogError` on mismatch). Then compiles the ojson schema (including registered `DatoriumDirectRef` / `DatoriumCachedRef` string formats). Returns a `CollectionClient[T]` whose items and patches cannot be used with another binding (including another bind of the same descriptor).
+
+Optional: `client.Establish(ctx, Todos, Users, …)` still validates a whole catalog once at startup; later `Bind` calls reuse the cache.
 
 ### CreateDoc
 
@@ -101,14 +100,15 @@ type DocMeta struct {
 ### DeleteDoc
 
 ```go
-func (cc CollectionClient[T]) DeleteDoc(ctx context.Context, item CollectionItem[T]) (WriteResult, error)
+func (cc CollectionClient[T]) DeleteDoc(ctx context.Context, id, version string) (WriteResult, error)
 ```
 
 ```go
-_, err := todos.DeleteDoc(ctx, item)
+_, err := todos.DeleteDoc(ctx, patched.ID, patched.Version)
+// or: todos.DeleteDoc(ctx, item.Meta.ID, item.Meta.Version)
 ```
 
-Uses `item.Meta.ID` / `item.Meta.Version` and rejects items from another binding.
+`version` is the optimistic concurrency `#` (from a prior read’s `Meta.Version` or a write’s `WriteResult.Version`).
 
 ### WriteResult
 

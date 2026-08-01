@@ -13,11 +13,11 @@ type CollectionRef interface {
 }
 
 // Collection is a compile-time binding of a document content type T to a
-// collection name and schema version. Declare once in application code, pass
-// to Establish for catalog validation, then Bind to obtain a CollectionClient:
+// collection name and schema version. Declare once in application code, then
+// Bind to obtain a CollectionClient (lazy-establishes on first Bind):
 //
 //	var Todos = datorium.MustCollection[Todo]("Todos", 0)
-//	todos, err := Todos.Bind(client)
+//	todos, err := Todos.Bind(ctx, client)
 type Collection[T any] struct {
 	Name    string
 	Version int

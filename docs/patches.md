@@ -7,7 +7,7 @@ Under the hood this is [RFC6902](https://datatracker.ietf.org/doc/html/rfc6902) 
 ## Edit then diff (recommended)
 
 ```go
-todos, err := Todos.Bind(client)
+todos, err := Todos.Bind(ctx, client)
 
 item, err := todos.GetDoc(ctx, id)
 if err != nil {

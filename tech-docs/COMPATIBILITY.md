@@ -4,12 +4,11 @@
 
 | Server | HTTP API | Client status |
 |--------|----------|---------------|
-| DatoriumDB `v0.0.2` | `/datoriumdb/v1` | Current target for unreleased client |
-| DatoriumDB `v0.0.1` | `/datoriumdb/v1` | Same client-facing API surface; prefer `v0.0.2` for integration |
+| DatoriumDB `v0.0.5` | `/datoriumdb/v1` | Current target for unreleased client |
+| DatoriumDB `v0.0.2` | `/datoriumdb/v1` | Same client-facing API surface |
+| DatoriumDB `v0.0.1` | `/datoriumdb/v1` | Same client-facing API surface; prefer a newer tag for integration |
 
-`v0.0.2` focuses on install docs plus server-side JSON field-order
-preservation (establishment cache writes, schema history embedding). The
-smart-client HTTP contract (`/health`, `/ready`, `/establish`, `/command`,
+The smart-client HTTP contract (`/health`, `/ready`, `/establish`, `/command`,
 `/schema/...`) remains API `v1`.
 
 ## Drift detection
@@ -18,7 +17,7 @@ smart-client HTTP contract (`/health`, `/ready`, `/establish`, `/command`,
 2. Diff DatoriumDB `test/contract/golden/` when updating fixtures under
    `testdata/contract/` in this repo.
 3. Run `./start_integration_test.sh` against a `datoriumdb` checkout at
-   tag `v0.0.2` (or `main` containing that release). Set `DATORIUMDB_SRC`
+   tag `v0.0.5` (or `main` containing that release). Set `DATORIUMDB_SRC`
    if the sibling path is not `../datoriumdb`.
 
 ## Known ambiguities / caveats

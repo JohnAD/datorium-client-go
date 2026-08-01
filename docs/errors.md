@@ -54,7 +54,7 @@ type CatalogError struct {
 }
 ```
 
-Returned by `Establish(ctx, cols...)` when a declared collection is missing or its schema version does not match the live establishment document. Fix the binary’s catalog (or deploy the matching server schemas) before shipping.
+Returned by `Establish(ctx, cols...)` or a lazy `Collection.Bind` when a declared collection is missing or its schema version does not match the live establishment document. Fix the binary’s catalog (or deploy the matching server schemas) before shipping.
 
 ## Transport errors
 

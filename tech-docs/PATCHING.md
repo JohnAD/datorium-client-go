@@ -12,7 +12,7 @@ ojson patch reference: sibling [`ojson/tech-docs/patch.md`](../../ojson/tech-doc
 ## Recommended app pattern
 
 1. Declare `Collection[T]` and optionally a path bag.
-2. `Establish` + `Bind` → `CollectionClient[T]`.
+2. `Bind` → `CollectionClient[T]` (lazy-establishes).
 3. `GetDoc` → mutate `item.Doc` → `CreatePatchFromChanges` → `PatchDoc`.
 
 Hand-crafted ops use `CreatePatch(item, ojson.Patch)` so schema validation and id/version attachment stay collection-scoped.

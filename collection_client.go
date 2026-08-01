@@ -21,7 +21,7 @@ type collectionBinding struct {
 var nextCollectionBindingID atomic.Uint64
 
 // CollectionClient is a typed, collection-scoped view of a Client.
-// Obtain one with Collection[T].Bind after Establish.
+// Obtain one with Collection[T].Bind (lazy-establishes on first use).
 type CollectionClient[T any] struct {
 	client  *Client
 	col     Collection[T]
@@ -63,9 +63,14 @@ type DocMeta struct {
 	Version string // #
 }
 
-// Bind attaches this collection descriptor to an established client.
-// It verifies the live schema name/version and compiles the ojson schema.
-func (col Collection[T]) Bind(c *Client) (CollectionClient[T], error) {
+// Bind attaches this collection descriptor to a client.
+// On the first Bind (or any Bind before a successful Establish), it lazily
+// fetches establishment config and validates this collection's name/version
+// against the live schemas, then compiles the ojson schema.
+//
+// Explicit Client.Establish remains available for raw apps or to validate a
+// whole multi-collection catalog once at startup before binding.
+func (col Collection[T]) Bind(ctx context.Context, c *Client) (CollectionClient[T], error) {
 	var zero CollectionClient[T]
 	if c == nil {
 		return zero, fmt.Errorf("datorium: nil client")
@@ -75,14 +80,19 @@ func (col Collection[T]) Bind(c *Client) (CollectionClient[T], error) {
 	}
 	est := c.cache.get()
 	if est == nil {
-		return zero, fmt.Errorf("datorium: not established; call Establish before Bind")
+		if err := c.Establish(ctx, col); err != nil {
+			return zero, err
+		}
+		est = c.cache.get()
+		if est == nil {
+			return zero, fmt.Errorf("datorium: establishment cache empty after fetch")
+		}
+	} else if err := validateCatalog(est, []CollectionRef{col}); err != nil {
+		return zero, err
 	}
 	entry, ok := est.Schemas[col.Name]
 	if !ok {
 		return zero, fmt.Errorf("datorium: schema for collection %q not in establishment", col.Name)
-	}
-	if entry.Version != col.Version {
-		return zero, fmt.Errorf("datorium: schema version for %q is %d, collection declares %d", col.Name, entry.Version, col.Version)
 	}
 	if entry.Doc.IsMissing() || !entry.Doc.IsObject() {
 		return zero, fmt.Errorf("datorium: schema document for %q is missing", col.Name)
@@ -198,19 +208,17 @@ func (cc CollectionClient[T]) GetDocOpts(ctx context.Context, id string, opts *R
 	return cc.itemFromResult(res)
 }
 
-// DeleteDoc deletes the document represented by item (optimistic concurrency).
-func (cc CollectionClient[T]) DeleteDoc(ctx context.Context, item CollectionItem[T]) (WriteResult, error) {
+// DeleteDoc deletes a document by id at the given optimistic-concurrency version.
+// After CreateDoc or PatchDoc, pass wr.ID and wr.Version from the WriteResult.
+func (cc CollectionClient[T]) DeleteDoc(ctx context.Context, id, version string) (WriteResult, error) {
 	if err := cc.requireBound(); err != nil {
 		return WriteResult{}, err
 	}
-	if err := cc.requireItem(item); err != nil {
-		return WriteResult{}, err
+	if id == "" {
+		return WriteResult{}, fmt.Errorf("datorium: id is required")
 	}
-	if item.Meta.ID == "" {
-		return WriteResult{}, fmt.Errorf("datorium: item id is required")
-	}
-	if item.Meta.Version == "" {
-		return WriteResult{}, fmt.Errorf("datorium: item version is required")
+	if version == "" {
+		return WriteResult{}, fmt.Errorf("datorium: version is required")
 	}
 
 	est, err := cc.client.ensureEstablished(ctx)
@@ -219,19 +227,18 @@ func (cc CollectionClient[T]) DeleteDoc(ctx context.Context, item CollectionItem
 	}
 	detail := ojson.NewObject()
 	detail.Set("$", ojson.NewString(cc.col.SchemaMarker()))
-	detail.Set("#", ojson.NewString(item.Meta.Version))
+	detail.Set("#", ojson.NewString(version))
 	ensureOperationIDValue(detail)
-	line, err := BuildCommandOrdered("delete", cc.col.Name, item.Meta.ID, detail)
+	line, err := BuildCommandOrdered("delete", cc.col.Name, id, detail)
 	if err != nil {
 		return WriteResult{}, err
 	}
-	route, err := cc.client.routeDocument(est, item.Meta.ID, RouteWrite)
+	route, err := cc.client.routeDocument(est, id, RouteWrite)
 	if err != nil {
 		return WriteResult{}, err
 	}
-	docID := item.Meta.ID
 	res, err := cc.client.executeRouted(ctx, route, line, func(est *Establishment) (Route, error) {
-		return cc.client.routeDocument(est, docID, RouteWrite)
+		return cc.client.routeDocument(est, id, RouteWrite)
 	})
 	if err != nil {
 		return WriteResult{}, err

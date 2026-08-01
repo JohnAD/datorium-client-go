@@ -45,10 +45,7 @@ func TestPatchDocSendsOrderedRFC6902(t *testing.T) {
 		t.Fatal(err)
 	}
 	Todos := datorium.MustCollection[todoDoc]("Todos", 0)
-	if err := client.Establish(context.Background(), Todos); err != nil {
-		t.Fatal(err)
-	}
-	todos, err := Todos.Bind(client)
+	todos, err := Todos.Bind(context.Background(), client)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,10 +121,7 @@ func TestCreatePatchFromChanges(t *testing.T) {
 		t.Fatal(err)
 	}
 	Todos := datorium.MustCollection[todoDoc]("Todos", 0)
-	if err := client.Establish(context.Background(), Todos); err != nil {
-		t.Fatal(err)
-	}
-	todos, err := Todos.Bind(client)
+	todos, err := Todos.Bind(context.Background(), client)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -176,10 +170,7 @@ func TestCreatePatchFromChangesRejectsEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	Todos := datorium.MustCollection[todoDoc]("Todos", 0)
-	if err := client.Establish(context.Background(), Todos); err != nil {
-		t.Fatal(err)
-	}
-	todos, err := Todos.Bind(client)
+	todos, err := Todos.Bind(context.Background(), client)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -210,10 +201,7 @@ func TestCreatePatchRejectsEmpty(t *testing.T) {
 		t.Fatal(err)
 	}
 	Todos := datorium.MustCollection[todoDoc]("Todos", 0)
-	if err := client.Establish(context.Background(), Todos); err != nil {
-		t.Fatal(err)
-	}
-	todos, err := Todos.Bind(client)
+	todos, err := Todos.Bind(context.Background(), client)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -244,14 +232,11 @@ func TestCrossBindingItemRejected(t *testing.T) {
 		t.Fatal(err)
 	}
 	Todos := datorium.MustCollection[todoDoc]("Todos", 0)
-	if err := client.Establish(context.Background(), Todos); err != nil {
-		t.Fatal(err)
-	}
-	a, err := Todos.Bind(client)
+	a, err := Todos.Bind(context.Background(), client)
 	if err != nil {
 		t.Fatal(err)
 	}
-	b, err := Todos.Bind(client)
+	b, err := Todos.Bind(context.Background(), client)
 	if err != nil {
 		t.Fatal(err)
 	}
