@@ -35,6 +35,49 @@ type TokenSource interface {
 type StaticToken string // implements TokenSource
 ```
 
+The client calls `Token(ctx)` **on every request** (the result is not cached).
+That makes a self-renewing `TokenSource` the natural pattern for long-running
+services whose tokens expire: mint (or fetch) a token, cache it, and refresh
+it shortly before expiry.
+
+```go
+type renewingSource struct {
+    mu     sync.Mutex
+    token  string
+    expiry time.Time
+}
+
+// Token returns the cached token, refreshing it when it is about to expire.
+// The client invokes this per request, so it must be cheap in the common case.
+func (s *renewingSource) Token(ctx context.Context) (string, error) {
+    s.mu.Lock()
+    defer s.mu.Unlock()
+    if s.token == "" || time.Until(s.expiry) < 30*time.Second {
+        tok, exp, err := mintToken(ctx) // your identity system's call
+        if err != nil {
+            if s.token != "" {
+                return s.token, nil // keep serving the soon-to-expire token
+            }
+            return "", err
+        }
+        s.token, s.expiry = tok, exp
+    }
+    return s.token, nil
+}
+```
+
+Guidelines:
+
+- **Refresh with a margin** (e.g. 30 s) so in-flight requests never carry an
+  already-expired token.
+- **Serve the old token on refresh failure** when one exists, so a transient
+  identity-provider outage does not take down the service.
+- Return the token **without** the `Bearer ` prefix (a prefix is tolerated
+  and stripped, but plain is preferred). Never return an empty string.
+- `TokenSource` must be safe for concurrent use; the client is.
+- For short-lived processes and tests, a plain `Token` string or
+  `StaticToken` is enough — see [Testing and integration setup](testing.md).
+
 ## Lifecycle
 
 ```go

@@ -14,5 +14,6 @@ These pages describe **what to call and how**. For library internals, protocol e
 | [References](references.md) | `@` / `@@` refs, resolve, front-page helpers |
 | [Errors](errors.md) | `AppError`, transport errors, common codes |
 | [Utilities and packages](utilities.md) | IDs, command builders, `refs` / `searchpath` / `shard` |
+| [Testing and integration setup](testing.md) | Unit-test seams, Compose cluster, minting test tokens |
 
 Compatible with DatoriumDB `v0.0.5` / HTTP API `v1`.
