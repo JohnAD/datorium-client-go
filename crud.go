@@ -7,6 +7,21 @@ import (
 	"github.com/JohnAD/ojson"
 )
 
+// ReplicationNote is an optional informational object on a successful write when
+// one-shot document replication (and related distribution) did not finish.
+// The write still succeeded on the SOT member; unacknowledged members catch up
+// asynchronously. Present together with DistributionComplete == false.
+type ReplicationNote struct {
+	Code           string
+	Message        string
+	Required       []string
+	Acknowledged   []string
+	Unacknowledged []string
+	TimeoutMs      int
+	// Raw is the note object as returned by the server (ordered).
+	Raw ojson.JSONValue
+}
+
 // WriteResult is a successful create/patch/delete summary.
 type WriteResult struct {
 	Result        Result
@@ -16,6 +31,14 @@ type WriteResult struct {
 	Version       string // create/delete: "#"; patch: versions.after
 	VersionBefore string
 	OperationID   string
+	// DistributionComplete is true when document replication, search-index
+	// updates, and cached-summary updates all reached every required target
+	// (or no such work was required) in the one-shot window. false is a
+	// freshness hint, never a write failure.
+	DistributionComplete bool
+	// Note is set when the SOT write succeeded but document replication was
+	// incomplete; nil when omitted (typically when DistributionComplete).
+	Note *ReplicationNote
 }
 
 // ReadResult is a successful read summary.
@@ -182,12 +205,14 @@ func (c *Client) PatchWithVersionRetry(ctx context.Context, collection, id strin
 
 func writeResultFrom(res Result) WriteResult {
 	wr := WriteResult{
-		Result:      res,
-		Collection:  res.StringField("collection"),
-		ID:          res.StringField("id"),
-		Schema:      res.StringField("$"),
-		Version:     res.StringField("#"),
-		OperationID: res.StringField("operationId"),
+		Result:               res,
+		Collection:           res.StringField("collection"),
+		ID:                   res.StringField("id"),
+		Schema:               res.StringField("$"),
+		Version:              res.StringField("#"),
+		OperationID:          res.StringField("operationId"),
+		DistributionComplete: res.BoolField("distributionComplete"),
+		Note:                 replicationNoteFrom(res.ValueField("note")),
 	}
 	// Patch responses use versions.{before,after} instead of top-level "#".
 	versions := res.ValueField("versions")
@@ -198,6 +223,46 @@ func writeResultFrom(res Result) WriteResult {
 		}
 	}
 	return wr
+}
+
+func replicationNoteFrom(v ojson.JSONValue) *ReplicationNote {
+	if !v.IsObject() {
+		return nil
+	}
+	return &ReplicationNote{
+		Code:           v.Get("code").ToStringOrEmpty(),
+		Message:        v.Get("message").ToStringOrEmpty(),
+		Required:       stringSliceField(v, "required"),
+		Acknowledged:   stringSliceField(v, "acknowledged"),
+		Unacknowledged: stringSliceField(v, "unacknowledged"),
+		TimeoutMs:      intFieldFromValue(v.Get("timeoutMs")),
+		Raw:            v,
+	}
+}
+
+func stringSliceField(obj ojson.JSONValue, key string) []string {
+	arr := obj.Get(key)
+	if !arr.IsArray() {
+		return nil
+	}
+	var out []string
+	for _, item := range arr.Items() {
+		if item.IsString() {
+			out = append(out, item.ToStringOrEmpty())
+		}
+	}
+	return out
+}
+
+func intFieldFromValue(v ojson.JSONValue) int {
+	if v.IsMissing() {
+		return 0
+	}
+	n, err := v.ToIntTry()
+	if err != nil {
+		return 0
+	}
+	return n
 }
 
 func readResultFrom(res Result) ReadResult {

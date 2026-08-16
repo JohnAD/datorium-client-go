@@ -116,15 +116,24 @@ Summary of a successful create, patch, or delete:
 
 ```go
 type WriteResult struct {
-    Result        Result // raw envelope if you need it
-    Collection    string
-    ID            string
-    Schema        string
-    Version       string // new version after the write
-    VersionBefore string // patch only
-    OperationID   string // echoed by the server for this write
+    Result               Result // raw envelope if you need it
+    Collection           string
+    ID                   string
+    Schema               string
+    Version              string // new version after the write
+    VersionBefore        string // patch only
+    OperationID          string // echoed by the server for this write
+    DistributionComplete bool   // informational: doc+search+cache finished
+    Note                 *ReplicationNote // optional; incomplete doc replication
 }
 ```
+
+`DistributionComplete` is a freshness hint from DatoriumDB `v0.0.6+`. `true`
+means document replication, search updates, and cache updates all finished in
+the one-shot window (or no such work was required). `false` is **not** a write
+failure — the SOT commit still succeeded. When document replication was
+incomplete, `Note` may describe acknowledged / unacknowledged members; apps
+may ignore it or surface it.
 
 ### PatchDoc
 

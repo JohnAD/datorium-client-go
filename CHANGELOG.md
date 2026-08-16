@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `WriteResult.DistributionComplete` from successful create/patch/delete envelopes (`distributionComplete`).
+- Optional `WriteResult.Note` (`ReplicationNote`) when document replication was incomplete on an otherwise successful write.
+- `Result.BoolField` for top-level boolean envelope fields.
+
+### Changed
+
+- Compatibility target is DatoriumDB `v0.0.6` (HTTP API `v1` unchanged). Older server tags are not supported.
+- Contract fixture `testdata/contract/create_ok.json` refreshed from DatoriumDB `v0.0.6` golden (includes `distributionComplete`).
+
+## [2.0.0] - 2026-07-31
+
 ### Changed
 
 - Compatibility target is DatoriumDB `v0.0.5` (HTTP API `v1` unchanged).
@@ -41,6 +54,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Create IDs are always client-supplied: empty/`nil` mints a ULID locally (server no longer accepts `null` create parms). Create command lines are marshaled once so retries keep stable bytes.
 - Inbound DB JSON is parsed with ojson (`Result.Env`, `ReadResult` fields, establishment schemas) rather than `map[string]any`.
 
-[Unreleased]: https://github.com/JohnAD/datorium-client-go/compare/v1.0.1...HEAD
+[Unreleased]: https://github.com/JohnAD/datorium-client-go/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/JohnAD/datorium-client-go/compare/v1.0.1...v2.0.0
 [1.0.1]: https://github.com/JohnAD/datorium-client-go/compare/v1.0.0...v1.0.1
 [1.0.0]: https://github.com/JohnAD/datorium-client-go/releases/tag/v1.0.0

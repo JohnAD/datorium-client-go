@@ -85,6 +85,8 @@ func (r Result) FirstErrorCode() string
 func (r Result) StringField(key string) string
 func (r Result) ValueField(key string) ojson.JSONValue
 func (r Result) IntField(key string) int
+func (r Result) BoolField(key string) bool
 ```
+
 
 Most callers use the typed `WriteResult` / `CollectionItem` wrappers (or raw `ReadResult`) instead of digging through `Result` unless they need a rare envelope field.

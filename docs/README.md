@@ -16,4 +16,4 @@ These pages describe **what to call and how**. For library internals, protocol e
 | [Utilities and packages](utilities.md) | IDs, command builders, `refs` / `searchpath` / `shard` |
 | [Testing and integration setup](testing.md) | Unit-test seams, Compose cluster, minting test tokens |
 
-Compatible with DatoriumDB `v0.0.5` / HTTP API `v1`.
+Compatible with DatoriumDB `v0.0.6` / HTTP API `v1`.

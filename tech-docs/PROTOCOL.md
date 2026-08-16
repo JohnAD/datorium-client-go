@@ -58,3 +58,14 @@ supply them (integration tests mint with the fixture signing key).
 `create`, `read`, `patch`, `delete`, `search` as defined in
 DatoriumDB `ACCESS-LANGUAGE.md`. Patch details require `$`, `#`, and
 `RFC6902: [...]`.
+
+## Write distribution (DatoriumDB `v0.0.6+`)
+
+Successful `create` / `patch` / `delete` envelopes include informational
+`distributionComplete`. When true, document replication plus search and cache
+fan-out finished in the one-shot window (or no such work was required). When
+false, the SOT write still succeeded; remaining work continues asynchronously.
+Incomplete document replication may also include a top-level `note` object
+(`code`, `message`, `required` / `acknowledged` / `unacknowledged`,
+`timeoutMs`). This client surfaces both on `WriteResult` (`DistributionComplete`
+and optional `Note`).

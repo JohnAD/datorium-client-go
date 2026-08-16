@@ -4,9 +4,11 @@
 
 | Server | HTTP API | Client status |
 |--------|----------|---------------|
-| DatoriumDB `v0.0.5` | `/datoriumdb/v1` | Current target for unreleased client |
-| DatoriumDB `v0.0.2` | `/datoriumdb/v1` | Same client-facing API surface |
-| DatoriumDB `v0.0.1` | `/datoriumdb/v1` | Same client-facing API surface; prefer a newer tag for integration |
+| DatoriumDB `v0.0.6` | `/datoriumdb/v1` | Current target for unreleased client |
+
+Older DatoriumDB tags (`v0.0.5` and earlier) are not supported: write success
+envelopes now include informational `distributionComplete` (and optional
+replication `note`), and this client expects that shape.
 
 The smart-client HTTP contract (`/health`, `/ready`, `/establish`, `/command`,
 `/schema/...`) remains API `v1`.
@@ -17,13 +19,15 @@ The smart-client HTTP contract (`/health`, `/ready`, `/establish`, `/command`,
 2. Diff DatoriumDB `test/contract/golden/` when updating fixtures under
    `testdata/contract/` in this repo.
 3. Run `./start_integration_test.sh` against a `datoriumdb` checkout at
-   tag `v0.0.5` (or `main` containing that release). Set `DATORIUMDB_SRC`
+   tag `v0.0.6` (or `main` containing that release). Set `DATORIUMDB_SRC`
    if the sibling path is not `../datoriumdb`.
 
 ## Known ambiguities / caveats
 
 - Search results and cached summaries are eventually consistent; poll with a
-  timeout rather than assuming immediate visibility after writes.
+  timeout rather than assuming immediate visibility after writes. When a write
+  returns `WriteResult.DistributionComplete == true`, one-shot document,
+  search, and cache distribution finished in the response window.
 - Establishment `servers[].baseURL` may be Docker-internal; use
   `Config.BaseURLRewrite` when calling from the host.
 - Document ID period-prefix sharding follows DatoriumDB `shard.Slot`; IDs

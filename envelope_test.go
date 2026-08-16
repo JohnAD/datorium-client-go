@@ -21,6 +21,12 @@ func TestDecodeContractFixtures(t *testing.T) {
 	if res.StringField("id") == "" || res.StringField("#") == "" {
 		t.Fatalf("missing fields: %#v", res.Env)
 	}
+	if !res.Env.Get("distributionComplete").IsBoolean() {
+		t.Fatalf("expected distributionComplete boolean: %#v", res.Env)
+	}
+	if res.BoolField("distributionComplete") {
+		t.Fatalf("create_ok golden expects distributionComplete false")
+	}
 
 	wmBody, err := os.ReadFile(filepath.Join(root, "wrong_machine.json"))
 	if err != nil {

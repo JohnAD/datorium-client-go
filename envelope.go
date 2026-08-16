@@ -92,6 +92,15 @@ func (r Result) IntField(key string) int {
 	return n
 }
 
+// BoolField returns a top-level boolean field, or false if absent/invalid.
+func (r Result) BoolField(key string) bool {
+	v := r.Env.Get(key)
+	if v.IsMissing() || !v.IsBoolean() {
+		return false
+	}
+	return v.ToBoolOrDefault(false)
+}
+
 func jsonValueAsString(v ojson.JSONValue) string {
 	if v.IsMissing() || v.IsNull() {
 		return ""
