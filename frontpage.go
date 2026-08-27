@@ -3,7 +3,7 @@ package datorium
 import (
 	"fmt"
 
-	"github.com/JohnAD/datorium-client-go/refs"
+	"github.com/JohnAD/datorium-client-go/v2/refs"
 	"github.com/JohnAD/ojson"
 )
 

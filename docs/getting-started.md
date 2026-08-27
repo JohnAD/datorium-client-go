@@ -3,7 +3,7 @@
 ## Install
 
 ```bash
-go get github.com/JohnAD/datorium-client-go@latest
+go get github.com/JohnAD/datorium-client-go/v2@latest
 ```
 
 Requires Go **1.25.11** or newer.

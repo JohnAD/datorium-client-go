@@ -3,7 +3,7 @@ package shard_test
 import (
 	"testing"
 
-	"github.com/JohnAD/datorium-client-go/shard"
+	"github.com/JohnAD/datorium-client-go/v2/shard"
 )
 
 func TestSlotStable(t *testing.T) {

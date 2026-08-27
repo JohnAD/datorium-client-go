@@ -45,6 +45,8 @@ Create IDs are always client-supplied (typically a ULID). The server rejects
 
 Configure the client with an admin token (`datoriumdb.kind=admin`). Responses
 return after config write + reload; document migration stays asynchronous.
+Successful `Ensure*` / `DeleteSearch` calls re-fetch establishment so the
+client cache matches the new catalog.
 
 ## Envelope
 
@@ -75,7 +77,7 @@ library does not issue tokens; callers supply them.
 DatoriumDB `ACCESS-LANGUAGE.md` / `BINARY-FILES.md`. Patch details require `$`,
 `#`, and `RFC6902: [...]`.
 
-## Write distribution (DatoriumDB `v0.0.6+`)
+## Write distribution (DatoriumDB `v1.0.0`)
 
 Successful `create` / `patch` / `delete` / file mutation envelopes include
 informational `distributionComplete`. When true, the relevant one-shot

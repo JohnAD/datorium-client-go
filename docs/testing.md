@@ -53,7 +53,8 @@ Run it with a DatoriumDB checkout next to this repo (or set
      -subject my-integration-test
    ```
 
-   Pass it via `Config.Token` or an environment variable. These keys are
+   Add `-kind admin` for catalog ensure commands (`EnsureCollection` / …).
+   Pass the token via `Config.Token` or an environment variable. These keys are
    for tests only — never reuse them in production. For long-running test
    services, a self-refreshing `TokenSource` avoids mid-run expiry; see
    [Client and config — Tokens](client.md#tokens).

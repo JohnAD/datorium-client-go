@@ -3,8 +3,8 @@ package datorium_test
 import (
 	"testing"
 
-	datorium "github.com/JohnAD/datorium-client-go"
-	"github.com/JohnAD/datorium-client-go/refs"
+	datorium "github.com/JohnAD/datorium-client-go/v2"
+	"github.com/JohnAD/datorium-client-go/v2/refs"
 	"github.com/JohnAD/ojson"
 )
 

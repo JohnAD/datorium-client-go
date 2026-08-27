@@ -6,8 +6,8 @@ import (
 	"path/filepath"
 	"testing"
 
-	datorium "github.com/JohnAD/datorium-client-go"
-	"github.com/JohnAD/datorium-client-go/shard"
+	datorium "github.com/JohnAD/datorium-client-go/v2"
+	"github.com/JohnAD/datorium-client-go/v2/shard"
 )
 
 // TestTodoFixturesParse ensures the Compose establishment tree is structurally

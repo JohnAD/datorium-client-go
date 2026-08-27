@@ -1,6 +1,6 @@
 # Client and config
 
-Package: `github.com/JohnAD/datorium-client-go`
+Package: `github.com/JohnAD/datorium-client-go/v2`
 
 ## `datorium.New`
 
@@ -117,6 +117,18 @@ err := client.Establish(ctx, Todos, Users, TodoLists)
 todos, err := Todos.Bind(ctx, client) // reuses cache
 ```
 
+## Admin catalog (establishment only)
+
+Requires an **admin** JWT (`datoriumdb.kind=admin`) and posts to the establishment URL:
+
+```go
+func (c *Client) EnsureCollection(ctx context.Context, collection string, schema, upgrade map[string]any) (Result, error)
+func (c *Client) EnsureSearch(ctx context.Context, collection, searchName string, definition map[string]any) (Result, error)
+func (c *Client) DeleteSearch(ctx context.Context, collection, searchName string) (Result, error)
+```
+
+Successful calls refresh the establishment cache so subsequent `Bind` / routing see the new catalog. Document `$` migration after a schema upgrade continues asynchronously on the server.
+
 ## Schema history
 
 ```go
@@ -129,7 +141,7 @@ Fetches a historic schema document from the establishment server.
 
 After establish you can inspect:
 
-- `Establishment.General` — cluster name, version, establishment server
+- `Establishment.General` — cluster name, version, establishment server, optional `MaxFileBytes`
 - `Establishment.Servers` — name → `baseURL`
 - `Establishment.ShardMap` — range → SOT / read / proxy members
 - `Establishment.Schemas` — collection → `{Version, Doc}` (`Doc` is ordered `ojson.JSONValue`)

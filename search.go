@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/JohnAD/datorium-client-go/searchpath"
+	"github.com/JohnAD/datorium-client-go/v2/searchpath"
 )
 
 // SearchResult is a successful search response.

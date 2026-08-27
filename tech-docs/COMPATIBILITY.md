@@ -4,23 +4,16 @@
 
 | Server | HTTP API | Client status |
 |--------|----------|---------------|
-| DatoriumDB `main` / post–JSON-command | `/datoriumdb/v1` JSON/multipart `/command` | Current target for unreleased client |
+| DatoriumDB `v1.0.0` | `/datoriumdb/v1` JSON/multipart `/command` | Current target for unreleased client (`v2.1.0`) |
 
 This client requires the unified JSON command API: four-field
-`application/json` bodies (multipart for file create/update). Older servers
-that only accept `text/plain` command lines or public `/files/...` REST routes
-are **not** supported.
-
-Older DatoriumDB tags (`v0.0.5` and earlier) are also unsupported for
-`distributionComplete` / replication `note` shapes on write success.
+`application/json` bodies (multipart for `fileCreate` / `fileUpdate`). Older
+servers that only accept `text/plain` command lines or public `/files/...`
+REST routes are **not** supported.
 
 The smart-client HTTP contract (`/health`, `/ready`, `/establish`, `/command`,
-`/schema/...`) remains API `v1`, but the `/command` body format is a breaking
-change within `v1`.
-
-Admin catalog helpers (`EnsureCollection`, `EnsureSearch`, `DeleteSearch`) require
-a server that accepts `collectionEnsure` / `searchEnsure` / `searchDelete` with
-an admin JWT on the establishment URL.
+`/schema/...`) remains API `v1`, but the `/command` body format introduced in
+DatoriumDB `v1.0.0` is a breaking change within path `v1`.
 
 ## Drift detection
 
@@ -28,7 +21,7 @@ an admin JWT on the establishment URL.
 2. Diff DatoriumDB `test/contract/golden/` when updating fixtures under
    `testdata/contract/` in this repo.
 3. Run `./start_integration_test.sh` against a `datoriumdb` checkout at
-   tag `v0.0.6` (or `main` containing that release). Set `DATORIUMDB_SRC`
+   tag `v1.0.0` (or `main` containing that release). Set `DATORIUMDB_SRC`
    if the sibling path is not `../datoriumdb`.
 
 ## Known ambiguities / caveats
@@ -43,10 +36,13 @@ an admin JWT on the establishment URL.
   without a qualifying period hash the whole ID.
 - No multi-document transaction API exists; optimistic concurrency is per
   document via `#` versions.
+- `general.maxFileBytes` (optional) caps streamed uploads; zero/absent means
+  the server default (1 GiB in DatoriumDB `v1.0.0`).
 
 ## Versioning policy
 
 - Client follows SemVer.
-- Breaking public Go API changes require a major bump.
+- Import path for this major line is `github.com/JohnAD/datorium-client-go/v2`.
+- Breaking public Go API changes require a major bump (`/v3`, …).
 - Server API `v1` incompatible changes require a new client major or an
   explicit compatibility gate in this document.

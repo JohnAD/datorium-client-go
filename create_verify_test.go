@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	datorium "github.com/JohnAD/datorium-client-go"
+	datorium "github.com/JohnAD/datorium-client-go/v2"
 )
 
 func TestCreateMintsULIDWhenEmpty(t *testing.T) {

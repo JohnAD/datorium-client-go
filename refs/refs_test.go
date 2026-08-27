@@ -3,7 +3,7 @@ package refs_test
 import (
 	"testing"
 
-	"github.com/JohnAD/datorium-client-go/refs"
+	"github.com/JohnAD/datorium-client-go/v2/refs"
 )
 
 func TestParseDirectAndCached(t *testing.T) {

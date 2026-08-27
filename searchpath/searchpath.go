@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/JohnAD/datorium-client-go/shard"
+	"github.com/JohnAD/datorium-client-go/v2/shard"
 )
 
 // EncodeStringValue encodes a string value as an uppercase-hex path component.

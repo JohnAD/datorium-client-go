@@ -36,6 +36,17 @@ func IsAppCode(err error, code string) bool
 | `CodeDocumentStale` | `documentStale` | Stale document view |
 | `CodeReadMemberStale` | `readMemberStale` | Read member behind |
 | `CodeSearchNotFound` | `searchNotFound` | Unknown search |
+| `CodeFileNotFound` | `fileNotFound` | Missing binary attachment |
+| `CodeFileExists` | `fileExists` | `fileCreate` when filename already exists |
+| `CodeFileVersionMismatch` | `fileVersionMismatch` | Stale file `version` on update/delete |
+| `CodeInvalidFileName` | `invalidFileName` | Illegal attachment basename |
+| `CodeFileTooLarge` | `fileTooLarge` | Upload exceeds `maxFileBytes` |
+| `CodeFileStale` | `fileStale` | Attachment pending catch-up on read member |
+| `CodeContentTypeRequired` | `contentTypeRequired` | Missing content type where required |
+| `CodeInvalidRequest` | `invalidRequest` | Malformed command / detail |
+| `CodeAdminRequired` | `adminRequired` | Catalog ensure without admin JWT |
+| `CodeEstablishmentRequired` | `establishmentRequired` | Admin command not sent to establishment server |
+| `CodeSchemaDrift` | `schemaDrift` | `collectionEnsure` schema does not match live |
 
 Example:
 

@@ -13,10 +13,10 @@ import (
 	"strings"
 	"time"
 
-	datorium "github.com/JohnAD/datorium-client-go"
-	"github.com/JohnAD/datorium-client-go/refs"
-	"github.com/JohnAD/datorium-client-go/searchpath"
-	"github.com/JohnAD/datorium-client-go/shard"
+	datorium "github.com/JohnAD/datorium-client-go/v2"
+	"github.com/JohnAD/datorium-client-go/v2/refs"
+	"github.com/JohnAD/datorium-client-go/v2/searchpath"
+	"github.com/JohnAD/datorium-client-go/v2/shard"
 	"github.com/JohnAD/ojson"
 )
 

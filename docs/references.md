@@ -10,7 +10,7 @@ DatoriumDB documents can point at other documents with reference strings:
 ## Package `refs`
 
 ```go
-import "github.com/JohnAD/datorium-client-go/refs"
+import "github.com/JohnAD/datorium-client-go/v2/refs"
 
 r, ok, err := refs.Parse(s)
 direct := refs.FormatDirect("TodoLists", listID)   // @__TodoLists__…

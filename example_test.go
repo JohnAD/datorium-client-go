@@ -6,7 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 
-	datorium "github.com/JohnAD/datorium-client-go"
+	datorium "github.com/JohnAD/datorium-client-go/v2"
 )
 
 func ExampleClient_Create() {

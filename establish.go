@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"sync"
 
-	"github.com/JohnAD/datorium-client-go/shard"
+	"github.com/JohnAD/datorium-client-go/v2/shard"
 	"github.com/JohnAD/ojson"
 )
 
@@ -28,6 +28,9 @@ type GeneralConfig struct {
 	ReadMemberCheckinSeconds            int    `json:"readMemberCheckinSeconds"`
 	CacheUpdateCheckinSeconds           int    `json:"cacheUpdateCheckinSeconds"`
 	ReadMemberFailedCheckinsBeforeStale int    `json:"readMemberFailedCheckinsBeforeStale"`
+	// MaxFileBytes is the streamed binary attachment upload limit (bytes).
+	// Zero means the server default (1 GiB as of DatoriumDB v1.0.0).
+	MaxFileBytes int64 `json:"maxFileBytes,omitempty"`
 }
 
 // SchemaEntry is one collection schema from establish.

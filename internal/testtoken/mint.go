@@ -1,4 +1,4 @@
-// Package testtoken mints development-only EdDSA client JWTs matching
+// Package testtoken mints development-only EdDSA JWTs matching
 // DatoriumDB fixture __auth.json + signing key material.
 package testtoken
 
@@ -24,6 +24,7 @@ type AuthFile struct {
 		TokenLifetimeSeconds struct {
 			Client  int `json:"client"`
 			Machine int `json:"machine"`
+			Admin   int `json:"admin"`
 		} `json:"tokenLifetimeSeconds"`
 		Keys []struct {
 			Kid       string `json:"kid"`
@@ -34,9 +35,21 @@ type AuthFile struct {
 	} `json:"auth"`
 }
 
-// MintClientToken signs a client JWT using a PKCS8 Ed25519 PEM private key
-// and the issuer/audience/kid from authJSONPath (__auth.json).
+// MintClientToken signs a client JWT (datoriumdb.kind=client).
 func MintClientToken(authJSONPath, privateKeyPEMPath, subject string, lifetime time.Duration) (string, error) {
+	return MintToken(authJSONPath, privateKeyPEMPath, subject, "client", lifetime)
+}
+
+// MintAdminToken signs an admin JWT (datoriumdb.kind=admin) for catalog ensure commands.
+func MintAdminToken(authJSONPath, privateKeyPEMPath, subject string, lifetime time.Duration) (string, error) {
+	return MintToken(authJSONPath, privateKeyPEMPath, subject, "admin", lifetime)
+}
+
+// MintToken signs a JWT with the given datoriumdb.kind ("client", "admin", …).
+func MintToken(authJSONPath, privateKeyPEMPath, subject, kind string, lifetime time.Duration) (string, error) {
+	if kind == "" {
+		kind = "client"
+	}
 	raw, err := os.ReadFile(authJSONPath)
 	if err != nil {
 		return "", err
@@ -61,8 +74,17 @@ func MintClientToken(authJSONPath, privateKeyPEMPath, subject string, lifetime t
 	}
 	if lifetime <= 0 {
 		lifetime = time.Hour
-		if auth.Auth.TokenLifetimeSeconds.Client > 0 {
-			lifetime = time.Duration(auth.Auth.TokenLifetimeSeconds.Client) * time.Second
+		switch kind {
+		case "admin":
+			if auth.Auth.TokenLifetimeSeconds.Admin > 0 {
+				lifetime = time.Duration(auth.Auth.TokenLifetimeSeconds.Admin) * time.Second
+			} else if auth.Auth.TokenLifetimeSeconds.Client > 0 {
+				lifetime = time.Duration(auth.Auth.TokenLifetimeSeconds.Client) * time.Second
+			}
+		default:
+			if auth.Auth.TokenLifetimeSeconds.Client > 0 {
+				lifetime = time.Duration(auth.Auth.TokenLifetimeSeconds.Client) * time.Second
+			}
 		}
 	}
 	now := time.Now()
@@ -72,7 +94,7 @@ func MintClientToken(authJSONPath, privateKeyPEMPath, subject string, lifetime t
 		Subject(subject).
 		IssuedAt(now).
 		Expiration(now.Add(lifetime)).
-		Claim("datoriumdb.kind", "client").
+		Claim("datoriumdb.kind", kind).
 		Build()
 	if err != nil {
 		return "", err

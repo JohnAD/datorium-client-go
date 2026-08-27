@@ -1,4 +1,4 @@
-module github.com/JohnAD/datorium-client-go
+module github.com/JohnAD/datorium-client-go/v2
 
 go 1.25.11
 

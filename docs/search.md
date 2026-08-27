@@ -23,7 +23,7 @@ Runs a **precompiled** search defined in establishment config.
 For equals-string style searches, build path segments so the client can CRC32-route to the correct search shard:
 
 ```go
-import "github.com/JohnAD/datorium-client-go/searchpath"
+import "github.com/JohnAD/datorium-client-go/v2/searchpath"
 
 segs := searchpath.EqualsStringSegments("done") // example: status value
 sr, err := client.Search(ctx, "Todos", "byStatus", map[string]any{

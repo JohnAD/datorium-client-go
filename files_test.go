@@ -10,7 +10,7 @@ import (
 	"strings"
 	"testing"
 
-	datorium "github.com/JohnAD/datorium-client-go"
+	datorium "github.com/JohnAD/datorium-client-go/v2"
 )
 
 func TestFilePutDownloadListDelete(t *testing.T) {

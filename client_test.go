@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"testing"
 
-	datorium "github.com/JohnAD/datorium-client-go"
-	"github.com/JohnAD/datorium-client-go/shard"
+	datorium "github.com/JohnAD/datorium-client-go/v2"
+	"github.com/JohnAD/datorium-client-go/v2/shard"
 )
 
 func TestHealthAndEstablishAndCRUD(t *testing.T) {
@@ -224,6 +224,9 @@ func TestEnsureCollectionPostsAdminCommand(t *testing.T) {
 			"schemaVersion": 0, "generalVersion": 2,
 		})
 	})
+	mux.HandleFunc("GET /datoriumdb/v1/establish", func(w http.ResponseWriter, r *http.Request) {
+		writeEnv(w, withTodosSchema(establishDoc(r.Host)))
+	})
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
 
@@ -242,6 +245,9 @@ func TestEnsureCollectionPostsAdminCommand(t *testing.T) {
 	}
 	if !res.OK {
 		t.Fatalf("result %#v", res)
+	}
+	if client.CachedEstablishment() == nil {
+		t.Fatal("expected establishment cache refresh after EnsureCollection")
 	}
 	req := parseCommandBody(t, gotBody)
 	if req.Command != "collectionEnsure" || req.Target != "Todos" || req.Parameter != "" {
