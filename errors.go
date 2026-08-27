@@ -8,16 +8,22 @@ import (
 
 // Common stable application error codes from DatoriumDB.
 const (
-	CodeWrongMachine     = "wrongMachine"
-	CodeVersionMismatch  = "versionMismatch"
-	CodeDocumentNotFound = "documentNotFound"
-	CodeDocumentExists   = "documentExists"
-	CodeUnauthenticated  = "unauthenticated"
-	CodeInvalidToken     = "invalidToken"
-	CodeTokenExpired     = "tokenExpired"
-	CodeDocumentStale    = "documentStale"
-	CodeReadMemberStale  = "readMemberStale"
-	CodeSearchNotFound   = "searchNotFound"
+	CodeWrongMachine         = "wrongMachine"
+	CodeVersionMismatch      = "versionMismatch"
+	CodeDocumentNotFound     = "documentNotFound"
+	CodeDocumentExists       = "documentExists"
+	CodeUnauthenticated      = "unauthenticated"
+	CodeInvalidToken         = "invalidToken"
+	CodeTokenExpired         = "tokenExpired"
+	CodeDocumentStale        = "documentStale"
+	CodeReadMemberStale      = "readMemberStale"
+	CodeSearchNotFound       = "searchNotFound"
+	CodeFileNotFound         = "fileNotFound"
+	CodeFileExists           = "fileExists"
+	CodeFileVersionMismatch  = "fileVersionMismatch"
+	CodeInvalidFileName      = "invalidFileName"
+	CodeFileTooLarge         = "fileTooLarge"
+	CodeFileStale            = "fileStale"
 )
 
 // AppError is an application-level failure (HTTP often still 200).

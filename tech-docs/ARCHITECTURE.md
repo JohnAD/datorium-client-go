@@ -32,8 +32,10 @@ flowchart LR
   Transport --> ServerB
 ```
 
-- **Transport** sends `Authorization: Bearer …`, posts `text/plain; charset=utf-8`
-  command bodies, and always JSON-decodes the response body.
+- **Transport** sends `Authorization: Bearer …`, posts
+  `application/json` four-field command bodies (or multipart for file
+  create/update), and JSON-decodes envelope responses (raw stream for
+  successful `fileRead`).
 - **EstablishCache** stores `general`, `servers`, `shardMap`, `schemas`, `searches`, `auth`.
 - **Router** picks SOT vs read-member base URLs from document/search shard slots.
 - **Host rewrite** maps Docker-internal `baseURL`s to host-reachable URLs when set.
@@ -51,7 +53,7 @@ flowchart LR
 3. On `versionMismatch`: surface typed error; optional helper re-reads and retries once.
 4. Writes include a client-generated ULID `operationId` unless the caller supplies one.
 5. **Create IDs** are always client-generated (ULID via `NewDocumentID` when the
-   caller passes empty/`Void`). The access-language line is built once before
+   caller passes empty/`Void`). The JSON command body is built once before
    network attempts. On `documentExists`, or after a transport error (optional
    delay via `CreateAmbiguousVerifyDelay`), a follow-up read may treat an
    existing document as an idempotent create success.

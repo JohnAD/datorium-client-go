@@ -34,21 +34,21 @@ func TestHealthAndEstablishAndCRUD(t *testing.T) {
 		gotCT = r.Header.Get("Content-Type")
 		b, _ := io.ReadAll(r.Body)
 		gotBody = string(b)
-		if strings.HasPrefix(gotBody, "create ") {
+		req := parseCommandBody(t, gotBody)
+		switch req.Command {
+		case "create":
 			writeEnv(w, map[string]any{
 				"ok": true, "command": "create", "collection": "Todos",
 				"id": "todo1", "$": "Todos:0", "#": "ver1", "operationId": "op1",
 			})
-			return
-		}
-		if strings.HasPrefix(gotBody, "read ") {
+		case "read":
 			writeEnv(w, map[string]any{
 				"ok": true, "command": "read", "collection": "Todos", "id": "todo1",
 				"sot": map[string]any{"!": "todo1", "$": "Todos:0", "#": "ver1", "title": "Buy milk"},
 			})
-			return
+		default:
+			writeEnv(w, map[string]any{"ok": false, "errors": []any{map[string]any{"code": "unknownCommand", "message": "nope"}}})
 		}
-		writeEnv(w, map[string]any{"ok": false, "errors": []any{map[string]any{"code": "unknownCommand", "message": "nope"}}})
 	})
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
@@ -78,7 +78,7 @@ func TestHealthAndEstablishAndCRUD(t *testing.T) {
 	if wr.ID != "todo1" || wr.Version != "ver1" {
 		t.Fatalf("create result %#v", wr)
 	}
-	if gotCT != "text/plain; charset=utf-8" {
+	if gotCT != "application/json" {
 		t.Fatalf("content-type %q", gotCT)
 	}
 	if !strings.Contains(gotBody, `"title":"Buy milk"`) {
@@ -203,13 +203,66 @@ func TestPatchUsesVersionsAfter(t *testing.T) {
 }
 
 func TestBuildCommand(t *testing.T) {
-	line, err := datorium.BuildCommand("create", "Todos", "todo1", map[string]any{"title": "x"})
+	body, err := datorium.BuildCommand("create", "Todos", "todo1", map[string]any{"title": "x"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if line != `create Todos todo1 {"title":"x"}` {
-		t.Fatalf("%q", line)
+	want := `{"command":"create","target":"Todos","parameter":"todo1","detail":{"title":"x"}}`
+	if string(body) != want {
+		t.Fatalf("got %q want %q", body, want)
 	}
+}
+
+func TestEnsureCollectionPostsAdminCommand(t *testing.T) {
+	var gotBody string
+	mux := http.NewServeMux()
+	mux.HandleFunc("POST /datoriumdb/v1/command", func(w http.ResponseWriter, r *http.Request) {
+		b, _ := io.ReadAll(r.Body)
+		gotBody = string(b)
+		writeEnv(w, map[string]any{
+			"ok": true, "command": "collectionEnsure", "collection": "Todos",
+			"schemaVersion": 0, "generalVersion": 2,
+		})
+	})
+	ts := httptest.NewServer(mux)
+	t.Cleanup(ts.Close)
+
+	client, err := datorium.New(datorium.Config{
+		EstablishmentURL: ts.URL,
+		Token:            "admin-token",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := client.EnsureCollection(context.Background(), "Todos", map[string]any{
+		"kind": "object", "children": []any{},
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.OK {
+		t.Fatalf("result %#v", res)
+	}
+	req := parseCommandBody(t, gotBody)
+	if req.Command != "collectionEnsure" || req.Target != "Todos" || req.Parameter != "" {
+		t.Fatalf("unexpected request %#v body=%q", req, gotBody)
+	}
+}
+
+type commandReq struct {
+	Command   string          `json:"command"`
+	Target    string          `json:"target"`
+	Parameter string          `json:"parameter"`
+	Detail    json.RawMessage `json:"detail"`
+}
+
+func parseCommandBody(t *testing.T, body string) commandReq {
+	t.Helper()
+	var req commandReq
+	if err := json.Unmarshal([]byte(body), &req); err != nil {
+		t.Fatalf("parse command JSON: %v body=%q", err, body)
+	}
+	return req
 }
 
 func writeEnv(w http.ResponseWriter, fields map[string]any) {

@@ -6,21 +6,24 @@ import (
 	"github.com/JohnAD/ojson"
 )
 
-// BuildCommandOrdered formats an access-language command whose detail object
+// BuildCommandOrdered formats a four-field JSON command request whose detail object
 // is serialized with ojson field order preserved. detail must be an object
 // (or Void/missing, treated as {}).
-func BuildCommandOrdered(word, target, parm string, detail ojson.JSONValue) (string, error) {
+func BuildCommandOrdered(word, target, parm string, detail ojson.JSONValue) ([]byte, error) {
 	if word == "" || target == "" || parm == "" {
-		return "", fmt.Errorf("datorium: word, target, and parm are required")
+		return nil, fmt.Errorf("datorium: word, target, and parm are required")
 	}
 	if detail.IsMissing() {
 		detail = ojson.NewObject()
 	}
 	if !detail.IsObject() {
-		return "", fmt.Errorf("datorium: detail must be a JSON object, got %s", detail.Kind())
+		return nil, fmt.Errorf("datorium: detail must be a JSON object, got %s", detail.Kind())
 	}
 	raw := detail.ToJSONBytes()
-	return fmt.Sprintf("%s %s %s %s", word, target, parm, string(raw)), nil
+	if len(raw) == 0 || raw[0] != '{' {
+		return nil, fmt.Errorf("datorium: detail must be a JSON object")
+	}
+	return marshalCommandRequest(word, target, parm, raw)
 }
 
 func ensureOperationIDValue(detail ojson.JSONValue) {

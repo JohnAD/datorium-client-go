@@ -9,12 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `EnsureCollection` / `EnsureSearch` / `DeleteSearch` for establishment-only
+  admin catalog commands (requires admin JWT).
 - `WriteResult.DistributionComplete` from successful create/patch/delete envelopes (`distributionComplete`).
 - Optional `WriteResult.Note` (`ReplicationNote`) when document replication was incomplete on an otherwise successful write.
 - `Result.BoolField` for top-level boolean envelope fields.
 
 ### Changed
 
+- **Breaking:** All commands post JSON `{"command","target","parameter","detail"}` to `POST /datoriumdb/v1/command` with `Content-Type: application/json`. `BuildCommand` / `BuildCommandOrdered` and `Client.Command` now return/accept `[]byte` instead of text lines.
+- **Breaking:** File operations (`PutFile`, `DownloadFile`, `ListFiles`, `DeleteFile`) use the unified command endpoint only; REST `/files/...` paths are no longer used. Uploads use multipart (`command` part + `content` part).
 - Compatibility target is DatoriumDB `v0.0.6` (HTTP API `v1` unchanged). Older server tags are not supported.
 - Contract fixture `testdata/contract/create_ok.json` refreshed from DatoriumDB `v0.0.6` golden (includes `distributionComplete`).
 

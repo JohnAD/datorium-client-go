@@ -96,22 +96,19 @@ func TestCreateDocOrderedVoidAndReadDelete(t *testing.T) {
 	mux.HandleFunc("POST /datoriumdb/v1/command", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		body := string(b)
-		switch {
-		case strings.HasPrefix(body, "create "):
+		req := parseCommandBody(t, body)
+		switch req.Command {
+		case "create":
 			createBody = body
-			parts := strings.SplitN(body, " ", 4)
-			if len(parts) < 4 {
-				t.Fatalf("bad create line %q", body)
-			}
-			createdID = parts[2]
+			createdID = req.Parameter
 			writeEnv(w, map[string]any{
 				"ok": true, "command": "create", "collection": "Todos",
 				"id": createdID, "$": "Todos:0", "#": "ver1", "operationId": "op1",
 			})
-		case strings.HasPrefix(body, "read "):
+		case "read":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprintf(w, `{"ok":true,"command":"read","collection":"Todos","id":%q,"sot":{"!":%q,"$":"Todos:0","#":"ver1","title":"Buy milk","status":"open"}}`, createdID, createdID)
-		case strings.HasPrefix(body, "delete "):
+		case "delete":
 			deleteBody = body
 			writeEnv(w, map[string]any{
 				"ok": true, "command": "delete", "collection": "Todos",
@@ -142,10 +139,10 @@ func TestCreateDocOrderedVoidAndReadDelete(t *testing.T) {
 	if wr.ID == "" || wr.ID == "null" || wr.Version != "ver1" {
 		t.Fatalf("create %#v", wr)
 	}
-	if !strings.HasPrefix(createBody, "create Todos "+wr.ID+" ") {
+	if req := parseCommandBody(t, createBody); req.Command != "create" || req.Target != "Todos" || req.Parameter != wr.ID {
 		t.Fatalf("expected client-minted id in command, got %q", createBody)
 	}
-	if strings.Contains(createBody, " null ") {
+	if strings.Contains(createBody, `"parameter":"null"`) || strings.Contains(createBody, " null ") {
 		t.Fatalf("server null parm must not be used: %q", createBody)
 	}
 	titleIdx := strings.Index(createBody, `"title"`)
@@ -241,7 +238,7 @@ func TestCreateDocExplicitID(t *testing.T) {
 	if wr.ID != "todo-42" {
 		t.Fatalf("%#v", wr)
 	}
-	if !strings.HasPrefix(gotBody, "create Todos todo-42 ") {
+	if !strings.HasPrefix(gotBody, `{"command":"create","target":"Todos","parameter":"todo-42"`) {
 		t.Fatalf("%q", gotBody)
 	}
 }
@@ -311,13 +308,13 @@ func TestBuildCommandOrderedPreservesFieldOrder(t *testing.T) {
 	doc := ojson.NewObject()
 	doc.Set("title", ojson.NewString("a"))
 	doc.Set("status", ojson.NewString("b"))
-	line, err := datorium.BuildCommandOrdered("create", "Todos", "01TESTID000000000000000000", doc)
+	body, err := datorium.BuildCommandOrdered("create", "Todos", "01TESTID000000000000000000", doc)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := `create Todos 01TESTID000000000000000000 {"title":"a","status":"b"}`
-	if line != want {
-		t.Fatalf("got %q want %q", line, want)
+	want := `{"command":"create","target":"Todos","parameter":"01TESTID000000000000000000","detail":{"title":"a","status":"b"}}`
+	if string(body) != want {
+		t.Fatalf("got %q want %q", body, want)
 	}
 }
 

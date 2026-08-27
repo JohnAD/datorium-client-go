@@ -19,14 +19,14 @@ func (c *Client) createAmbiguousVerifyDelay() time.Duration {
 	return d
 }
 
-// executeCreate posts a pre-built create command line. The line must already
+// executeCreate posts a pre-built create command body. The body must already
 // include a client-supplied document id and a fully marshaled detail object so
 // retries never re-stringify (map key order must not shift).
 //
 // On documentExists, a follow-up read treats an existing document as an
 // idempotent success. On TransportError, waits CreateAmbiguousVerifyDelay then
 // reads; if the document exists, returns success.
-func (c *Client) executeCreate(ctx context.Context, collection, id, line string) (WriteResult, error) {
+func (c *Client) executeCreate(ctx context.Context, collection, id string, body []byte) (WriteResult, error) {
 	est, err := c.ensureEstablished(ctx)
 	if err != nil {
 		return WriteResult{}, err
@@ -35,7 +35,7 @@ func (c *Client) executeCreate(ctx context.Context, collection, id, line string)
 	if err != nil {
 		return WriteResult{}, err
 	}
-	res, err := c.executeRouted(ctx, route, line, func(est *Establishment) (Route, error) {
+	res, err := c.executeRouted(ctx, route, body, func(est *Establishment) (Route, error) {
 		return c.routeDocument(est, id, RouteWrite)
 	})
 	if err == nil {

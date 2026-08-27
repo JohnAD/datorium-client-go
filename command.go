@@ -7,25 +7,54 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/oklog/ulid/v2"
 )
 
-// BuildCommand formats an access-language command with a strict-JSON detail object.
-func BuildCommand(word, target, parm string, detail any) (string, error) {
+// BuildCommand formats a four-field JSON command request with a strict-JSON detail object.
+func BuildCommand(word, target, parm string, detail any) ([]byte, error) {
 	if word == "" || target == "" || parm == "" {
-		return "", fmt.Errorf("datorium: word, target, and parm are required")
+		return nil, fmt.Errorf("datorium: word, target, and parm are required")
 	}
 	if detail == nil {
 		detail = map[string]any{}
 	}
 	raw, err := json.Marshal(detail)
 	if err != nil {
-		return "", fmt.Errorf("datorium: marshal detail: %w", err)
+		return nil, fmt.Errorf("datorium: marshal detail: %w", err)
 	}
-	return fmt.Sprintf("%s %s %s %s", word, target, parm, string(raw)), nil
+	if len(raw) == 0 || raw[0] != '{' {
+		return nil, fmt.Errorf("datorium: detail must be a JSON object")
+	}
+	return marshalCommandRequest(word, target, parm, raw)
+}
+
+func marshalCommandRequest(command, target, parameter string, detailJSON []byte) ([]byte, error) {
+	cmd, err := json.Marshal(command)
+	if err != nil {
+		return nil, err
+	}
+	tgt, err := json.Marshal(target)
+	if err != nil {
+		return nil, err
+	}
+	parm, err := json.Marshal(parameter)
+	if err != nil {
+		return nil, err
+	}
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	buf.WriteString(`"command":`)
+	buf.Write(cmd)
+	buf.WriteString(`,"target":`)
+	buf.Write(tgt)
+	buf.WriteString(`,"parameter":`)
+	buf.Write(parm)
+	buf.WriteString(`,"detail":`)
+	buf.Write(detailJSON)
+	buf.WriteByte('}')
+	return buf.Bytes(), nil
 }
 
 // NewOperationID returns a new ULID string suitable for write operationId fields.
@@ -44,22 +73,22 @@ func newULID() string {
 	return ulid.MustNew(ulid.Timestamp(time.Now()), rand.Reader).String()
 }
 
-// Command posts a raw access-language command line to the given base URL
+// Command posts a marshaled four-field JSON command to the given base URL
 // (or the establishment URL when baseURL is empty), without smart routing.
-func (c *Client) Command(ctx context.Context, baseURL, line string) (Result, error) {
+func (c *Client) Command(ctx context.Context, baseURL string, body []byte) (Result, error) {
 	if baseURL == "" {
 		baseURL = c.cfg.EstablishmentURL
 	}
-	return c.postCommand(ctx, baseURL, line)
+	return c.postCommand(ctx, baseURL, body)
 }
 
-func (c *Client) postCommand(ctx context.Context, baseURL, line string) (Result, error) {
-	line = strings.TrimSpace(line)
-	if line == "" {
+func (c *Client) postCommand(ctx context.Context, baseURL string, body []byte) (Result, error) {
+	body = bytes.TrimSpace(body)
+	if len(body) == 0 {
 		return Result{}, fmt.Errorf("datorium: empty command")
 	}
 	res, err := c.doJSON(ctx, http.MethodPost, baseURL, apiPrefix+"/command",
-		bytes.NewReader([]byte(line)), "text/plain; charset=utf-8", true)
+		bytes.NewReader(body), "application/json", true)
 	if err != nil {
 		return Result{}, err
 	}
@@ -73,14 +102,14 @@ type routeResolver func(est *Establishment) (Route, error)
 // On wrongMachine it always re-fetches establishment and recomputes the next
 // hop via resolve. Bounce correctServer/baseURL/shardSlot are ignored;
 // configVersion on the bounce is diagnostic-only (what that server thinks).
-func (c *Client) executeRouted(ctx context.Context, initial Route, line string, resolve routeResolver) (Result, error) {
+func (c *Client) executeRouted(ctx context.Context, initial Route, body []byte, resolve routeResolver) (Result, error) {
 	base := initial.BaseURL
 	if base == "" {
 		base = c.cfg.EstablishmentURL
 	}
 	var last Result
 	for attempt := 0; attempt <= c.wmRetries; attempt++ {
-		res, err := c.postCommand(ctx, base, line)
+		res, err := c.postCommand(ctx, base, body)
 		if err != nil {
 			return Result{}, err
 		}

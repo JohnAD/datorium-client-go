@@ -9,6 +9,7 @@ These pages describe **what to call and how**. For library internals, protocol e
 | [Getting started](getting-started.md) | Install, first client, recommended typed path |
 | [Client and config](client.md) | `New`, `Config`, health/ready, establish, schema |
 | [Documents](documents.md) | Bound `CollectionClient` and raw create / read / patch / delete |
+| [Binary attachments](files.md) | `PutFile` / `DownloadFile` / `ListFiles` / `DeleteFile` |
 | [Patch instructions](patches.md) | `CreatePatchFromChanges`, hand-built `ojson.Patch`, path bags |
 | [Search](search.md) | Precompiled search helpers |
 | [References](references.md) | `@` / `@@` refs, resolve, front-page helpers |

@@ -30,7 +30,7 @@ func (c *Client) Search(ctx context.Context, collection, searchName string, vars
 	if vars == nil {
 		vars = map[string]any{}
 	}
-	line, err := BuildCommand("search", collection, searchName, vars)
+	body, err := BuildCommand("search", collection, searchName, vars)
 	if err != nil {
 		return SearchResult{}, err
 	}
@@ -66,7 +66,7 @@ func (c *Client) Search(ctx context.Context, collection, searchName string, vars
 		}
 		return Route{ServerName: name, BaseURL: c.rewriteURL(name, u)}, nil
 	}
-	res, err := c.executeRouted(ctx, route, line, resolve)
+	res, err := c.executeRouted(ctx, route, body, resolve)
 	if err != nil {
 		return SearchResult{}, err
 	}

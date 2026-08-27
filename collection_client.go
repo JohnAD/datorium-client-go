@@ -157,11 +157,11 @@ func (cc CollectionClient[T]) CreateDoc(ctx context.Context, id *string, doc T) 
 	}
 	ensureOperationIDValue(detail)
 
-	line, err := BuildCommandOrdered("create", cc.col.Name, docID, detail)
+	body, err := BuildCommandOrdered("create", cc.col.Name, docID, detail)
 	if err != nil {
 		return WriteResult{}, err
 	}
-	return cc.client.executeCreate(ctx, cc.col.Name, docID, line)
+	return cc.client.executeCreate(ctx, cc.col.Name, docID, body)
 }
 
 // GetDoc reads a document by id (no extra fields / cache summaries).
@@ -191,7 +191,7 @@ func (cc CollectionClient[T]) GetDocOpts(ctx context.Context, id string, opts *R
 			detail.Set("cacheSummaries", ojson.NewBoolean(true))
 		}
 	}
-	line, err := BuildCommandOrdered("read", cc.col.Name, id, detail)
+	body, err := BuildCommandOrdered("read", cc.col.Name, id, detail)
 	if err != nil {
 		return zero, err
 	}
@@ -199,7 +199,7 @@ func (cc CollectionClient[T]) GetDocOpts(ctx context.Context, id string, opts *R
 	if err != nil {
 		return zero, err
 	}
-	res, err := cc.client.executeRouted(ctx, route, line, func(est *Establishment) (Route, error) {
+	res, err := cc.client.executeRouted(ctx, route, body, func(est *Establishment) (Route, error) {
 		return cc.client.routeDocument(est, id, RouteRead)
 	})
 	if err != nil {
@@ -229,7 +229,7 @@ func (cc CollectionClient[T]) DeleteDoc(ctx context.Context, id, version string)
 	detail.Set("$", ojson.NewString(cc.col.SchemaMarker()))
 	detail.Set("#", ojson.NewString(version))
 	ensureOperationIDValue(detail)
-	line, err := BuildCommandOrdered("delete", cc.col.Name, id, detail)
+	body, err := BuildCommandOrdered("delete", cc.col.Name, id, detail)
 	if err != nil {
 		return WriteResult{}, err
 	}
@@ -237,7 +237,7 @@ func (cc CollectionClient[T]) DeleteDoc(ctx context.Context, id, version string)
 	if err != nil {
 		return WriteResult{}, err
 	}
-	res, err := cc.client.executeRouted(ctx, route, line, func(est *Establishment) (Route, error) {
+	res, err := cc.client.executeRouted(ctx, route, body, func(est *Establishment) (Route, error) {
 		return cc.client.routeDocument(est, id, RouteWrite)
 	})
 	if err != nil {
@@ -340,7 +340,7 @@ func (cc CollectionClient[T]) PatchDoc(ctx context.Context, patch CollectionPatc
 	detail.Set("RFC6902", patch.Patch.ToJSONValue())
 	ensureOperationIDValue(detail)
 
-	line, err := BuildCommandOrdered("patch", cc.col.Name, patch.id, detail)
+	body, err := BuildCommandOrdered("patch", cc.col.Name, patch.id, detail)
 	if err != nil {
 		return WriteResult{}, err
 	}
@@ -349,7 +349,7 @@ func (cc CollectionClient[T]) PatchDoc(ctx context.Context, patch CollectionPatc
 		return WriteResult{}, err
 	}
 	docID := patch.id
-	res, err := cc.client.executeRouted(ctx, route, line, func(est *Establishment) (Route, error) {
+	res, err := cc.client.executeRouted(ctx, route, body, func(est *Establishment) (Route, error) {
 		return cc.client.routeDocument(est, docID, RouteWrite)
 	})
 	if err != nil {

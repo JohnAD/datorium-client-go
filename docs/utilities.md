@@ -9,20 +9,25 @@ func NewOperationID() string // ULID for write operationId fields
 
 Prefer letting raw `Create` / typed `CollectionClient.CreateDoc` mint document ids (`""` / `nil`). Call `NewDocumentID` yourself when you need the id before the create call (for example to embed it elsewhere in the same transaction of work).
 
-## Access-language helpers
+## JSON command helpers
 
 ```go
-func BuildCommand(word, target, parm string, detail any) (string, error)
-func BuildCommandOrdered(word, target, parm string, detail ojson.JSONValue) (string, error)
+func BuildCommand(word, target, parm string, detail any) ([]byte, error)
+func BuildCommandOrdered(word, target, parm string, detail ojson.JSONValue) ([]byte, error)
 
-func (c *Client) Command(ctx context.Context, baseURL, line string) (Result, error)
+func (c *Client) Command(ctx context.Context, baseURL string, body []byte) (Result, error)
 ```
 
-- `BuildCommand` — JSON-marshals `detail` with `encoding/json` (maps are order-unsafe).
-- `BuildCommandOrdered` — serializes an ojson object with stable field order (used by typed writes).
-- `Command` — posts a raw command line without smart routing (`baseURL` empty → establishment URL).
+- `BuildCommand` — builds `{"command","target","parameter","detail"}` with
+  `encoding/json` for `detail` (maps are order-unsafe).
+- `BuildCommandOrdered` — splices an ojson object so `detail` keeps stable
+  field order (used by typed writes).
+- `Command` — posts a pre-built JSON body without smart routing (`baseURL`
+  empty → establishment URL).
 
-Normal apps should use a bound `CollectionClient` (`CreateDoc` / `GetDoc` / `PatchDoc` / `DeleteDoc`) or raw `Create` / `Read` / `Patch` / `Delete` / `Search` instead of hand-building lines.
+Normal apps should use a bound `CollectionClient` (`CreateDoc` / `GetDoc` /
+`PatchDoc` / `DeleteDoc`) or raw `Create` / `Read` / `Patch` / `Delete` /
+`Search` / file helpers instead of hand-building bodies.
 
 ## Subpackages
 

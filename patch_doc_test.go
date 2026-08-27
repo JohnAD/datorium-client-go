@@ -22,11 +22,12 @@ func TestPatchDocSendsOrderedRFC6902(t *testing.T) {
 	mux.HandleFunc("POST /datoriumdb/v1/command", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		body := string(b)
-		switch {
-		case strings.HasPrefix(body, "read "):
+		req := parseCommandBody(t, body)
+		switch req.Command {
+		case "read":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprintf(w, `{"ok":true,"command":"read","collection":"Todos","id":"todo1","sot":{"!":"todo1","$":"Todos:0","#":"ver1","title":"Buy milk","status":"open"}}`)
-		case strings.HasPrefix(body, "patch "):
+		case "patch":
 			gotBody = body
 			writeEnv(w, map[string]any{
 				"ok": true, "command": "patch", "collection": "Todos", "id": "todo1",
@@ -75,7 +76,7 @@ func TestPatchDocSendsOrderedRFC6902(t *testing.T) {
 	if wr.Version != "ver2" || wr.VersionBefore != "ver1" {
 		t.Fatalf("%#v", wr)
 	}
-	if !strings.HasPrefix(gotBody, "patch Todos todo1 ") {
+	if req := parseCommandBody(t, gotBody); req.Command != "patch" || req.Target != "Todos" || req.Parameter != "todo1" {
 		t.Fatalf("%q", gotBody)
 	}
 	if !strings.Contains(gotBody, `"$":"Todos:0"`) || !strings.Contains(gotBody, `"#":"ver1"`) {
@@ -98,11 +99,12 @@ func TestCreatePatchFromChanges(t *testing.T) {
 	mux.HandleFunc("POST /datoriumdb/v1/command", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		body := string(b)
-		switch {
-		case strings.HasPrefix(body, "read "):
+		req := parseCommandBody(t, body)
+		switch req.Command {
+		case "read":
 			w.Header().Set("Content-Type", "application/json")
 			_, _ = fmt.Fprintf(w, `{"ok":true,"command":"read","collection":"Todos","id":"todo1","sot":{"!":"todo1","$":"Todos:0","#":"ver1","title":"Buy milk","status":"open"}}`)
-		case strings.HasPrefix(body, "patch "):
+		case "patch":
 			gotBody = body
 			writeEnv(w, map[string]any{
 				"ok": true, "command": "patch", "collection": "Todos", "id": "todo1",

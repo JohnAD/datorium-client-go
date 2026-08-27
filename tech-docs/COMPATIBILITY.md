@@ -4,14 +4,23 @@
 
 | Server | HTTP API | Client status |
 |--------|----------|---------------|
-| DatoriumDB `v0.0.6` | `/datoriumdb/v1` | Current target for unreleased client |
+| DatoriumDB `main` / post–JSON-command | `/datoriumdb/v1` JSON/multipart `/command` | Current target for unreleased client |
 
-Older DatoriumDB tags (`v0.0.5` and earlier) are not supported: write success
-envelopes now include informational `distributionComplete` (and optional
-replication `note`), and this client expects that shape.
+This client requires the unified JSON command API: four-field
+`application/json` bodies (multipart for file create/update). Older servers
+that only accept `text/plain` command lines or public `/files/...` REST routes
+are **not** supported.
+
+Older DatoriumDB tags (`v0.0.5` and earlier) are also unsupported for
+`distributionComplete` / replication `note` shapes on write success.
 
 The smart-client HTTP contract (`/health`, `/ready`, `/establish`, `/command`,
-`/schema/...`) remains API `v1`.
+`/schema/...`) remains API `v1`, but the `/command` body format is a breaking
+change within `v1`.
+
+Admin catalog helpers (`EnsureCollection`, `EnsureSearch`, `DeleteSearch`) require
+a server that accepts `collectionEnsure` / `searchEnsure` / `searchDelete` with
+an admin JWT on the establishment URL.
 
 ## Drift detection
 

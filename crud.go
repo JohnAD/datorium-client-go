@@ -67,11 +67,11 @@ func (c *Client) Create(ctx context.Context, collection, id string, content map[
 	}
 	detail := ensureOperationID(cloneMap(content))
 	// Marshal exactly once before any network attempts.
-	line, err := BuildCommand("create", collection, id, detail)
+	body, err := BuildCommand("create", collection, id, detail)
 	if err != nil {
 		return WriteResult{}, err
 	}
-	return c.executeCreate(ctx, collection, id, line)
+	return c.executeCreate(ctx, collection, id, body)
 }
 
 // ReadOptions controls optional read-scope fields.
@@ -101,7 +101,7 @@ func (c *Client) Read(ctx context.Context, collection, id string, opts *ReadOpti
 	if len(detail) == 0 {
 		detail = map[string]any{}
 	}
-	line, err := BuildCommand("read", collection, id, detail)
+	body, err := BuildCommand("read", collection, id, detail)
 	if err != nil {
 		return ReadResult{}, err
 	}
@@ -109,7 +109,7 @@ func (c *Client) Read(ctx context.Context, collection, id string, opts *ReadOpti
 	if err != nil {
 		return ReadResult{}, err
 	}
-	res, err := c.executeRouted(ctx, route, line, func(est *Establishment) (Route, error) {
+	res, err := c.executeRouted(ctx, route, body, func(est *Establishment) (Route, error) {
 		return c.routeDocument(est, id, RouteRead)
 	})
 	if err != nil {
@@ -129,7 +129,7 @@ func (c *Client) Patch(ctx context.Context, collection, id string, detail map[st
 		return WriteResult{}, err
 	}
 	detail = ensureOperationID(cloneMap(detail))
-	line, err := BuildCommand("patch", collection, id, detail)
+	body, err := BuildCommand("patch", collection, id, detail)
 	if err != nil {
 		return WriteResult{}, err
 	}
@@ -137,7 +137,7 @@ func (c *Client) Patch(ctx context.Context, collection, id string, detail map[st
 	if err != nil {
 		return WriteResult{}, err
 	}
-	res, err := c.executeRouted(ctx, route, line, func(est *Establishment) (Route, error) {
+	res, err := c.executeRouted(ctx, route, body, func(est *Establishment) (Route, error) {
 		return c.routeDocument(est, id, RouteWrite)
 	})
 	if err != nil {
@@ -156,7 +156,7 @@ func (c *Client) Delete(ctx context.Context, collection, id string, detail map[s
 		return WriteResult{}, err
 	}
 	detail = ensureOperationID(cloneMap(detail))
-	line, err := BuildCommand("delete", collection, id, detail)
+	body, err := BuildCommand("delete", collection, id, detail)
 	if err != nil {
 		return WriteResult{}, err
 	}
@@ -164,7 +164,7 @@ func (c *Client) Delete(ctx context.Context, collection, id string, detail map[s
 	if err != nil {
 		return WriteResult{}, err
 	}
-	res, err := c.executeRouted(ctx, route, line, func(est *Establishment) (Route, error) {
+	res, err := c.executeRouted(ctx, route, body, func(est *Establishment) (Route, error) {
 		return c.routeDocument(est, id, RouteWrite)
 	})
 	if err != nil {

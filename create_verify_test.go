@@ -22,11 +22,10 @@ func TestCreateMintsULIDWhenEmpty(t *testing.T) {
 	mux.HandleFunc("POST /datoriumdb/v1/command", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		gotBody = string(b)
-		parts := strings.SplitN(gotBody, " ", 4)
-		id := parts[2]
+		req := parseCommandBody(t, gotBody)
 		writeEnv(w, map[string]any{
 			"ok": true, "command": "create", "collection": "Todos",
-			"id": id, "$": "Todos:0", "#": "ver1", "operationId": "op1",
+			"id": req.Parameter, "$": "Todos:0", "#": "ver1", "operationId": "op1",
 		})
 	})
 	ts := httptest.NewServer(mux)
@@ -45,10 +44,10 @@ func TestCreateMintsULIDWhenEmpty(t *testing.T) {
 	if wr.ID == "" || wr.ID == "null" {
 		t.Fatalf("expected minted id, got %#v", wr)
 	}
-	if !strings.HasPrefix(gotBody, "create Todos "+wr.ID+" ") {
+	if req := parseCommandBody(t, gotBody); req.Command != "create" || req.Parameter != wr.ID {
 		t.Fatalf("body %q", gotBody)
 	}
-	if strings.Contains(gotBody, " null ") {
+	if strings.Contains(gotBody, `"parameter":"null"`) || strings.Contains(gotBody, " null ") {
 		t.Fatalf("must not send null parm: %q", gotBody)
 	}
 }
@@ -62,22 +61,22 @@ func TestCreateDocumentExistsTreatedAsIdempotentSuccess(t *testing.T) {
 	mux.HandleFunc("POST /datoriumdb/v1/command", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		body := string(b)
-		if strings.HasPrefix(body, "create ") {
+		req := parseCommandBody(t, body)
+		switch req.Command {
+		case "create":
 			creates.Add(1)
 			writeEnv(w, map[string]any{
 				"ok": false, "command": "create", "collection": "Todos", "id": "todo1",
 				"errors": []any{map[string]any{"code": "documentExists", "message": "exists"}},
 			})
-			return
-		}
-		if strings.HasPrefix(body, "read ") {
+		case "read":
 			writeEnv(w, map[string]any{
 				"ok": true, "command": "read", "collection": "Todos", "id": "todo1",
 				"sot": map[string]any{"!": "todo1", "$": "Todos:0", "#": "ver9", "title": "Buy milk"},
 			})
-			return
+		default:
+			writeEnv(w, map[string]any{"ok": false, "errors": []any{map[string]any{"code": "unknownCommand", "message": "nope"}}})
 		}
-		writeEnv(w, map[string]any{"ok": false, "errors": []any{map[string]any{"code": "unknownCommand", "message": "nope"}}})
 	})
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
@@ -109,7 +108,9 @@ func TestCreateTransportFailureVerifiedByFollowUpRead(t *testing.T) {
 	mux.HandleFunc("POST /datoriumdb/v1/command", func(w http.ResponseWriter, r *http.Request) {
 		b, _ := io.ReadAll(r.Body)
 		body := string(b)
-		if strings.HasPrefix(body, "create ") {
+		req := parseCommandBody(t, body)
+		switch req.Command {
+		case "create":
 			creates.Add(1)
 			hj, ok := w.(http.Hijacker)
 			if !ok {
@@ -120,16 +121,14 @@ func TestCreateTransportFailureVerifiedByFollowUpRead(t *testing.T) {
 				t.Fatal(err)
 			}
 			_ = conn.Close()
-			return
-		}
-		if strings.HasPrefix(body, "read ") {
+		case "read":
 			writeEnv(w, map[string]any{
 				"ok": true, "command": "read", "collection": "Todos", "id": "todo1",
 				"sot": map[string]any{"!": "todo1", "$": "Todos:0", "#": "ver3", "title": "ok"},
 			})
-			return
+		default:
+			writeEnv(w, map[string]any{"ok": false, "errors": []any{map[string]any{"code": "unknownCommand", "message": "nope"}}})
 		}
-		writeEnv(w, map[string]any{"ok": false, "errors": []any{map[string]any{"code": "unknownCommand", "message": "nope"}}})
 	})
 	ts := httptest.NewServer(mux)
 	t.Cleanup(ts.Close)
