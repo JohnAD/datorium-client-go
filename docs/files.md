@@ -22,6 +22,23 @@ list, err := client.ListFiles(ctx, "Movies", docID)
 _, err = client.DeleteFile(ctx, "Movies", docID, "poster.png", meta.Version)
 ```
 
+`ListFiles` returns the parent document’s current attachment list only (no
+file bytes): a `[]FileMetadata` with one entry per file. Soft-deleted or
+pending-only names are omitted. `ETag` is empty on list entries (it is set
+from download response headers).
+
+```go
+type FileMetadata struct {
+    Name        string // file name; pass to DownloadFile / DeleteFile / PutFile
+    ContentType string
+    ByteSize    int64
+    SHA256      string
+    Version     string // optimistic concurrency token for update/delete
+    OperationID string
+    ETag        string // download headers only; empty from ListFiles
+}
+```
+
 Uploads must be seekable (`io.ReadSeeker`) or supply `PutFileOptions.Reopen`
 so wrongMachine / routing retries can resend. `IfMatch` empty selects
 `fileCreate`; a non-empty `IfMatch` selects `fileUpdate` with
