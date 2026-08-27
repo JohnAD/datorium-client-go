@@ -19,8 +19,12 @@ meta, err := client.DownloadFile(ctx, "Movies", docID, "poster.png", &buf)
 
 list, err := client.ListFiles(ctx, "Movies", docID)
 
-_, err = client.DeleteFile(ctx, "Movies", docID, "poster.png", meta.Version)
+wr, err = client.DeleteFile(ctx, "Movies", docID, "poster.png", meta.Version)
 ```
+
+`PutFile` and `DeleteFile` return a `FileWriteResult` summarizing the write
+(filename, new `Version`, size, hash, `DistributionComplete`, optional `Note`).
+`DownloadFile` returns `FileMetadata` plus the bytes written to your `io.Writer`.
 
 `ListFiles` returns the parent document’s current attachment list only (no
 file bytes): a `[]FileMetadata` with one entry per file. Soft-deleted or
@@ -36,6 +40,21 @@ type FileMetadata struct {
     Version     string // optimistic concurrency token for update/delete
     OperationID string
     ETag        string // download headers only; empty from ListFiles
+}
+
+type FileWriteResult struct {
+    Result               Result
+    Command              string
+    Collection           string
+    ID                   string
+    Filename             string
+    Version              string
+    ByteSize             int64
+    SHA256               string
+    ContentType          string
+    OperationID          string
+    DistributionComplete bool
+    Note                 *ReplicationNote // nil when omitted
 }
 ```
 
