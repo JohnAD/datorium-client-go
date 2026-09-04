@@ -24,6 +24,7 @@ const (
 	CodeInvalidFileName       = "invalidFileName"
 	CodeFileTooLarge          = "fileTooLarge"
 	CodeFileStale             = "fileStale"
+	CodeInvalidRange          = "invalidRange"
 	CodeContentTypeRequired   = "contentTypeRequired"
 	CodeInvalidRequest        = "invalidRequest"
 	CodeAdminRequired         = "adminRequired"

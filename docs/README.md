@@ -17,6 +17,6 @@ These pages describe **what to call and how**. For library internals, protocol e
 | [Utilities and packages](utilities.md) | IDs, command builders, `refs` / `searchpath` / `shard` |
 | [Testing and integration setup](testing.md) | Unit-test seams, Compose cluster, minting test tokens |
 
-Compatible with DatoriumDB `v1.0.0` / HTTP API `v1`.
+Compatible with DatoriumDB `v1.1.0` / HTTP API `v1`.
 
 Import path: `github.com/JohnAD/datorium-client-go/v2`.

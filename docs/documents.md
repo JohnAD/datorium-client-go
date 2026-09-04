@@ -128,7 +128,7 @@ type WriteResult struct {
 }
 ```
 
-`DistributionComplete` is a freshness hint from DatoriumDB `v1.0.0`. `true`
+`DistributionComplete` is a freshness hint from DatoriumDB. `true`
 means document replication, search updates, and cache updates all finished in
 the one-shot window (or no such work was required). `false` is **not** a write
 failure — the SOT commit still succeeded. When document replication was

@@ -1,5 +1,5 @@
 // Package datorium is a smart Go client for DatoriumDB's HTTP API v1
-// (compatible with DatoriumDB v1.0.0).
+// (compatible with DatoriumDB v1.1.0).
 //
 // Import path: github.com/JohnAD/datorium-client-go/v2
 //

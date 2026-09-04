@@ -5,7 +5,7 @@ Idiomatic Go client for [DatoriumDB](https://github.com/JohnAD/datoriumdb).
 DatoriumDB lets you store your database as git-trackable JSON documents in
 ordinary directories — and still scale with sharding and clusters.
 
-Status: early development. Compatible with DatoriumDB `v1.0.0` / API `v1`.
+Status: early development. Compatible with DatoriumDB `v1.1.0` / API `v1`.
 
 ## Install
 

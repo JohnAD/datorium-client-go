@@ -4,16 +4,16 @@
 
 | Server | HTTP API | Client status |
 |--------|----------|---------------|
-| DatoriumDB `v1.0.0` | `/datoriumdb/v1` JSON/multipart `/command` | Current target for unreleased client (`v2.1.0`) |
+| DatoriumDB `v1.1.0` | `/datoriumdb/v1` JSON/multipart `/command` | Current target for unreleased client |
 
 This client requires the unified JSON command API: four-field
-`application/json` bodies (multipart for `fileCreate` / `fileUpdate`). Older
-servers that only accept `text/plain` command lines or public `/files/...`
-REST routes are **not** supported.
+`application/json` bodies (multipart for `fileCreate` / `fileUpdate`), plus
+optional single-range `fileRead` downloads (`Range` / `206` / `416`) from
+DatoriumDB `v1.1.0`. Older servers that only accept `text/plain` command lines
+or public `/files/...` REST routes are **not** supported.
 
 The smart-client HTTP contract (`/health`, `/ready`, `/establish`, `/command`,
-`/schema/...`) remains API `v1`, but the `/command` body format introduced in
-DatoriumDB `v1.0.0` is a breaking change within path `v1`.
+`/schema/...`) remains API `v1`.
 
 ## Drift detection
 
@@ -21,7 +21,7 @@ DatoriumDB `v1.0.0` is a breaking change within path `v1`.
 2. Diff DatoriumDB `test/contract/golden/` when updating fixtures under
    `testdata/contract/` in this repo.
 3. Run `./start_integration_test.sh` against a `datoriumdb` checkout at
-   tag `v1.0.0` (or `main` containing that release). Set `DATORIUMDB_SRC`
+   tag `v1.1.0` (or `main` containing that release). Set `DATORIUMDB_SRC`
    if the sibling path is not `../datoriumdb`.
 
 ## Known ambiguities / caveats
@@ -37,7 +37,10 @@ DatoriumDB `v1.0.0` is a breaking change within path `v1`.
 - No multi-document transaction API exists; optimistic concurrency is per
   document via `#` versions.
 - `general.maxFileBytes` (optional) caps streamed uploads; zero/absent means
-  the server default (1 GiB in DatoriumDB `v1.0.0`).
+  the server default (1 GiB).
+- Attachment `Range` requests may be ignored (full `200` body) when the unit
+  is unrecognized; unsatisfiable `bytes=` ranges return `416` /
+  `invalidRange`.
 
 ## Versioning policy
 

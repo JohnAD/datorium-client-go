@@ -25,6 +25,20 @@ type FileMetadata struct {
 	ETag        string
 }
 
+// FileDownloadMetadata describes a successful or failed HTTP file response.
+//
+// ByteSize is the response Content-Length: it is the selected range length for
+// a 206 response and the complete response length for a 200 response.
+// TotalByteSize is the complete representation size when known from
+// Content-Range, including "bytes */size" on a 416 response.
+type FileDownloadMetadata struct {
+	FileMetadata
+	StatusCode    int
+	ContentRange  string
+	AcceptRanges  string
+	TotalByteSize int64
+}
+
 // FileWriteResult is a successful fileCreate / fileUpdate / fileDelete summary.
 type FileWriteResult struct {
 	Result               Result
@@ -57,6 +71,15 @@ type PutFileOptions struct {
 	// Reopen returns a fresh body reader for each attempt. Required when body
 	// is not an io.ReadSeeker so wrongMachine / transport retries can resend.
 	Reopen func() (io.ReadCloser, error)
+}
+
+// DownloadFileOptions configures a streaming attachment read.
+type DownloadFileOptions struct {
+	// Range is one standard HTTP byte range. Empty requests the full file.
+	Range string
+	// OnResponse runs after response metadata is validated and before any file
+	// bytes are written. Proxies use it to commit HTTP status and headers.
+	OnResponse func(FileDownloadMetadata) error
 }
 
 // PutFile creates or updates a binary attachment for an existing parent document.
@@ -116,27 +139,111 @@ func (c *Client) PutFile(ctx context.Context, collection, docID, filename string
 // DownloadFile streams a binary attachment to w. Reads route to a shard read member.
 // On success, metadata comes from response headers (not the JSON 8 MiB path).
 func (c *Client) DownloadFile(ctx context.Context, collection, docID, filename string, w io.Writer) (FileMetadata, error) {
+	meta, err := c.downloadFile(ctx, collection, docID, filename, w, nil)
+	if err != nil {
+		return FileMetadata{}, err
+	}
+	return meta.FileMetadata, nil
+}
+
+// DownloadFileRange streams one standard HTTP byte range (for example
+// "bytes=0-1023", "bytes=1024-", or "bytes=-512") to w.
+//
+// A server may ignore Range and return 200 with the complete file. A 206
+// response contains the requested range. Response metadata is returned even
+// with an HTTP or application error, allowing callers to inspect a 416
+// Content-Range value.
+func (c *Client) DownloadFileRange(ctx context.Context, collection, docID, filename, byteRange string, w io.Writer) (FileDownloadMetadata, error) {
+	if err := validateFileByteRange(byteRange); err != nil {
+		return FileDownloadMetadata{}, err
+	}
+	return c.downloadFile(ctx, collection, docID, filename, w, &DownloadFileOptions{Range: byteRange})
+}
+
+// DownloadFileWithOptions streams a full or ranged attachment read.
+func (c *Client) DownloadFileWithOptions(ctx context.Context, collection, docID, filename string, w io.Writer, opts *DownloadFileOptions) (FileDownloadMetadata, error) {
+	if opts != nil && opts.Range != "" {
+		if err := validateFileByteRange(opts.Range); err != nil {
+			return FileDownloadMetadata{}, err
+		}
+	}
+	return c.downloadFile(ctx, collection, docID, filename, w, opts)
+}
+
+func (c *Client) downloadFile(ctx context.Context, collection, docID, filename string, w io.Writer, opts *DownloadFileOptions) (FileDownloadMetadata, error) {
 	if collection == "" || docID == "" || filename == "" {
-		return FileMetadata{}, fmt.Errorf("datorium: collection, docID, and filename are required")
+		return FileDownloadMetadata{}, fmt.Errorf("datorium: collection, docID, and filename are required")
 	}
 	if w == nil {
-		return FileMetadata{}, fmt.Errorf("datorium: writer is required")
+		return FileDownloadMetadata{}, fmt.Errorf("datorium: writer is required")
 	}
 	est, err := c.ensureEstablished(ctx)
 	if err != nil {
-		return FileMetadata{}, err
+		return FileDownloadMetadata{}, err
 	}
 	cmdBody, err := BuildCommand("fileRead", collection, docID, map[string]any{"filename": filename})
 	if err != nil {
-		return FileMetadata{}, err
+		return FileDownloadMetadata{}, err
 	}
 	route, err := c.routeDocument(est, docID, RouteRead)
 	if err != nil {
-		return FileMetadata{}, err
+		return FileDownloadMetadata{}, err
 	}
-	return c.executeRoutedFileDownload(ctx, route, cmdBody, filename, w, func(est *Establishment) (Route, error) {
+	return c.executeRoutedFileDownload(ctx, route, cmdBody, filename, opts, w, func(est *Establishment) (Route, error) {
 		return c.routeDocument(est, docID, RouteRead)
 	})
+}
+
+func validateFileByteRange(value string) error {
+	const prefix = "bytes="
+	if !strings.HasPrefix(value, prefix) {
+		return fmt.Errorf("datorium: byte range must use bytes= unit")
+	}
+	spec := strings.TrimPrefix(value, prefix)
+	if spec == "" || strings.ContainsAny(spec, ", \t\r\n") || strings.Count(spec, "-") != 1 {
+		return fmt.Errorf("datorium: byte range must be one closed, open-ended, or suffix range")
+	}
+	startText, endText, _ := strings.Cut(spec, "-")
+	if startText == "" && endText == "" {
+		return fmt.Errorf("datorium: byte range bounds are required")
+	}
+	parseBound := func(name, text string) (int64, error) {
+		for _, ch := range text {
+			if ch < '0' || ch > '9' {
+				return 0, fmt.Errorf("datorium: invalid byte range %s", name)
+			}
+		}
+		n, err := strconv.ParseInt(text, 10, 64)
+		if err != nil || n < 0 {
+			return 0, fmt.Errorf("datorium: invalid byte range %s", name)
+		}
+		return n, nil
+	}
+	if startText == "" {
+		suffix, err := parseBound("suffix", endText)
+		if err != nil {
+			return err
+		}
+		if suffix == 0 {
+			return fmt.Errorf("datorium: byte range suffix must be positive")
+		}
+		return nil
+	}
+	start, err := parseBound("start", startText)
+	if err != nil {
+		return err
+	}
+	if endText == "" {
+		return nil
+	}
+	end, err := parseBound("end", endText)
+	if err != nil {
+		return err
+	}
+	if end < start {
+		return fmt.Errorf("datorium: byte range end must not precede start")
+	}
+	return nil
 }
 
 // ListFiles returns the attachment manifest for a document (metadata only).
@@ -286,45 +393,46 @@ func (c *Client) executeRoutedFileDownload(
 	initial Route,
 	commandJSON []byte,
 	filename string,
+	opts *DownloadFileOptions,
 	w io.Writer,
 	resolve routeResolver,
-) (FileMetadata, error) {
+) (FileDownloadMetadata, error) {
 	base := initial.BaseURL
 	if base == "" {
 		base = c.cfg.EstablishmentURL
 	}
 	for attempt := 0; attempt <= c.wmRetries; attempt++ {
-		meta, res, isJSON, err := c.doFileDownloadOnce(ctx, base, commandJSON, filename, w)
+		meta, res, isJSON, err := c.doFileDownloadOnce(ctx, base, commandJSON, filename, opts, w)
 		if err != nil {
-			return FileMetadata{}, err
+			return meta, err
 		}
 		if !isJSON {
 			return meta, nil
 		}
 		ae := appErrorFromResult(res)
 		if ae.Code != CodeWrongMachine {
-			return FileMetadata{}, ae
+			return meta, ae
 		}
 		if attempt == c.wmRetries {
-			return FileMetadata{}, ae
+			return meta, ae
 		}
 		if err := c.Establish(ctx); err != nil {
-			return FileMetadata{}, err
+			return meta, err
 		}
 		est := c.cache.get()
 		if est == nil || resolve == nil {
-			return FileMetadata{}, ae
+			return meta, ae
 		}
 		route, err := resolve(est)
 		if err != nil {
-			return FileMetadata{}, err
+			return meta, err
 		}
 		if route.BaseURL == "" {
-			return FileMetadata{}, ae
+			return meta, ae
 		}
 		base = route.BaseURL
 	}
-	return FileMetadata{}, fmt.Errorf("datorium: download exhausted wrongMachine retries")
+	return FileDownloadMetadata{}, fmt.Errorf("datorium: download exhausted wrongMachine retries")
 }
 
 func (c *Client) doMultipartCommand(ctx context.Context, baseURL string, commandJSON []byte, contentType string, contentLength int64, openBody bodyOpener) (Result, error) {
@@ -414,36 +522,42 @@ func (c *Client) doMultipartCommand(ctx context.Context, baseURL string, command
 	return res, nil
 }
 
-func (c *Client) doFileDownloadOnce(ctx context.Context, baseURL string, commandJSON []byte, filename string, w io.Writer) (meta FileMetadata, res Result, isJSON bool, err error) {
+func (c *Client) doFileDownloadOnce(ctx context.Context, baseURL string, commandJSON []byte, filename string, opts *DownloadFileOptions, w io.Writer) (meta FileDownloadMetadata, res Result, isJSON bool, err error) {
 	reqURL := strings.TrimRight(baseURL, "/") + apiPrefix + "/command"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, reqURL, bytes.NewReader(commandJSON))
 	if err != nil {
-		return FileMetadata{}, Result{}, false, &TransportError{Err: err}
+		return FileDownloadMetadata{}, Result{}, false, &TransportError{Err: err}
 	}
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "*/*")
+	if opts != nil && opts.Range != "" {
+		req.Header.Set("Range", opts.Range)
+	}
 	req.Header.Set("User-Agent", c.userAgent)
 	tok, err := c.bearer(ctx)
 	if err != nil {
-		return FileMetadata{}, Result{}, false, err
+		return FileDownloadMetadata{}, Result{}, false, err
 	}
 	req.Header.Set("Authorization", "Bearer "+tok)
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return FileMetadata{}, Result{}, false, &TransportError{Err: err}
+		return FileDownloadMetadata{}, Result{}, false, &TransportError{Err: err}
 	}
 	defer resp.Body.Close()
+	meta = fileDownloadMetadataFromHeaders(filename, resp.StatusCode, resp.Header)
 
 	// Success streams set file metadata headers; errors are JSON envelopes
 	// (often still HTTP 200). Prefer metadata headers over Content-Type so a
 	// stored application/json attachment is not treated as an error.
-	if resp.Header.Get("X-DatoriumDB-File-Version") != "" || resp.Header.Get("X-DatoriumDB-SHA256") != "" {
-		if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-			return FileMetadata{}, Result{}, false, &TransportError{StatusCode: resp.StatusCode, Err: fmt.Errorf("unexpected status for file download")}
+	hasFileHeaders := resp.Header.Get("X-DatoriumDB-File-Version") != "" || resp.Header.Get("X-DatoriumDB-SHA256") != ""
+	if resp.StatusCode == http.StatusPartialContent || (resp.StatusCode == http.StatusOK && hasFileHeaders) {
+		if opts != nil && opts.OnResponse != nil {
+			if err := opts.OnResponse(meta); err != nil {
+				return meta, Result{}, false, err
+			}
 		}
-		meta = fileMetadataFromHeaders(filename, resp.Header)
 		if _, err := io.Copy(w, resp.Body); err != nil {
-			return FileMetadata{}, Result{}, false, &TransportError{StatusCode: resp.StatusCode, Err: err}
+			return meta, Result{}, false, &TransportError{StatusCode: resp.StatusCode, Err: err}
 		}
 		return meta, Result{}, false, nil
 	}
@@ -451,22 +565,22 @@ func (c *Client) doFileDownloadOnce(ctx context.Context, baseURL string, command
 	limited := io.LimitReader(resp.Body, maxResponseBodyBytes+1)
 	data, err := io.ReadAll(limited)
 	if err != nil {
-		return FileMetadata{}, Result{}, false, &TransportError{StatusCode: resp.StatusCode, Err: err}
+		return meta, Result{}, false, &TransportError{StatusCode: resp.StatusCode, Err: err}
 	}
 	if len(data) > maxResponseBodyBytes {
-		return FileMetadata{}, Result{}, false, &TransportError{StatusCode: resp.StatusCode, Err: fmt.Errorf("response body exceeds %d bytes", maxResponseBodyBytes)}
+		return meta, Result{}, false, &TransportError{StatusCode: resp.StatusCode, Err: fmt.Errorf("response body exceeds %d bytes", maxResponseBodyBytes)}
 	}
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		if decoded, derr := DecodeResult(data); derr == nil && (!decoded.OK || len(decoded.Errors) > 0) {
-			return FileMetadata{}, decoded, true, nil
+			return meta, decoded, true, nil
 		}
-		return FileMetadata{}, Result{}, false, &TransportError{StatusCode: resp.StatusCode, Body: string(data)}
+		return meta, Result{}, false, &TransportError{StatusCode: resp.StatusCode, Body: string(data)}
 	}
 	res, err = DecodeResult(data)
 	if err != nil {
-		return FileMetadata{}, Result{}, false, &TransportError{StatusCode: resp.StatusCode, Body: string(data), Err: err}
+		return meta, Result{}, false, &TransportError{StatusCode: resp.StatusCode, Body: string(data), Err: err}
 	}
-	return FileMetadata{}, res, true, nil
+	return meta, res, true, nil
 }
 
 func fileMetadataFromHeaders(filename string, h http.Header) FileMetadata {
@@ -481,6 +595,22 @@ func fileMetadataFromHeaders(filename string, h http.Header) FileMetadata {
 	if cl := h.Get("Content-Length"); cl != "" {
 		if n, err := strconv.ParseInt(cl, 10, 64); err == nil {
 			meta.ByteSize = n
+		}
+	}
+	return meta
+}
+
+func fileDownloadMetadataFromHeaders(filename string, statusCode int, h http.Header) FileDownloadMetadata {
+	meta := FileDownloadMetadata{
+		FileMetadata: fileMetadataFromHeaders(filename, h),
+		StatusCode:   statusCode,
+		ContentRange: h.Get("Content-Range"),
+		AcceptRanges: h.Get("Accept-Ranges"),
+	}
+	meta.TotalByteSize = meta.ByteSize
+	if slash := strings.LastIndex(meta.ContentRange, "/"); slash >= 0 && slash+1 < len(meta.ContentRange) {
+		if n, err := strconv.ParseInt(meta.ContentRange[slash+1:], 10, 64); err == nil {
+			meta.TotalByteSize = n
 		}
 	}
 	return meta

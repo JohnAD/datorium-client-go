@@ -5,6 +5,21 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Single-range attachment downloads through `DownloadFileRange` and
+  `DownloadFileWithOptions`.
+- Response status, `Content-Range`, `Accept-Ranges`, and total file size in
+  `FileDownloadMetadata`.
+- `OnResponse` callback for setting proxy headers before streaming bytes.
+- Stable `invalidRange` error code.
+
+### Changed
+
+- Compatibility target is DatoriumDB `v1.1.0` (HTTP API path `v1`).
+
 ## [2.1.0] - 2026-08-26
 
 ### Added
@@ -82,7 +97,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Create IDs are always client-supplied: empty/`nil` mints a ULID locally (server no longer accepts `null` create parms). Create command lines are marshaled once so retries keep stable bytes.
 - Inbound DB JSON is parsed with ojson (`Result.Env`, `ReadResult` fields, establishment schemas) rather than `map[string]any`.
 
-[Unreleased]: https://github.com/JohnAD/datorium-client-go/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/JohnAD/datorium-client-go/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/JohnAD/datorium-client-go/compare/v2.0.1...v2.1.0
 [2.0.1]: https://github.com/JohnAD/datorium-client-go/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/JohnAD/datorium-client-go/compare/v1.0.1...v2.0.0
 [1.0.1]: https://github.com/JohnAD/datorium-client-go/compare/v1.0.0...v1.0.1

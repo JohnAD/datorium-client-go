@@ -29,7 +29,7 @@ type GeneralConfig struct {
 	CacheUpdateCheckinSeconds           int    `json:"cacheUpdateCheckinSeconds"`
 	ReadMemberFailedCheckinsBeforeStale int    `json:"readMemberFailedCheckinsBeforeStale"`
 	// MaxFileBytes is the streamed binary attachment upload limit (bytes).
-	// Zero means the server default (1 GiB as of DatoriumDB v1.0.0).
+	// Zero means the server default (1 GiB).
 	MaxFileBytes int64 `json:"maxFileBytes,omitempty"`
 }
 

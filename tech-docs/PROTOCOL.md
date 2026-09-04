@@ -77,7 +77,15 @@ library does not issue tokens; callers supply them.
 DatoriumDB `ACCESS-LANGUAGE.md` / `BINARY-FILES.md`. Patch details require `$`,
 `#`, and `RFC6902: [...]`.
 
-## Write distribution (DatoriumDB `v1.0.0`)
+## Attachment range downloads (DatoriumDB `v1.1.0`)
+
+`fileRead` accepts an optional HTTP `Range` header with exactly one `bytes=`
+range. Successful partial reads return HTTP `206` with `Content-Range` /
+`Accept-Ranges`. Unsatisfiable ranges return HTTP `416` and an `invalidRange`
+envelope. This client exposes that via `DownloadFileRange` /
+`DownloadFileWithOptions` and `FileDownloadMetadata`.
+
+## Write distribution
 
 Successful `create` / `patch` / `delete` / file mutation envelopes include
 informational `distributionComplete`. When true, the relevant one-shot

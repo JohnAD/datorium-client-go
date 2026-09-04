@@ -42,6 +42,7 @@ func IsAppCode(err error, code string) bool
 | `CodeInvalidFileName` | `invalidFileName` | Illegal attachment basename |
 | `CodeFileTooLarge` | `fileTooLarge` | Upload exceeds `maxFileBytes` |
 | `CodeFileStale` | `fileStale` | Attachment pending catch-up on read member |
+| `CodeInvalidRange` | `invalidRange` | Unsatisfiable or invalid attachment `Range` |
 | `CodeContentTypeRequired` | `contentTypeRequired` | Missing content type where required |
 | `CodeInvalidRequest` | `invalidRequest` | Malformed command / detail |
 | `CodeAdminRequired` | `adminRequired` | Catalog ensure without admin JWT |
